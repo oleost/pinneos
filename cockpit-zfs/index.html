@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ZFS — PinneOS</title>
+  <link rel="stylesheet" href="../base1/patternfly.css">
+  <script src="../base1/cockpit.js"></script>
+  <style>
+    body { padding: 1.5rem; font-family: var(--pf-global--FontFamily--sans-serif); }
+    .pno-section { margin-bottom: 2rem; }
+    .pno-section h2 { border-bottom: 1px solid #eee; padding-bottom: .5rem; }
+  </style>
+</head>
+<body>
+
+<!--
+  PinneOS Cockpit ZFS plugin
+  All operations use cockpit.spawn(['zfs'|'zpool'|'/usr/lib/homelab/...', ...])
+  UI components use PatternFly — no build step required.
+
+  ─────────────────────────────────────────────────────────────────────────
+  SECTION PLAN:
+  ─────────────────────────────────────────────────────────────────────────
+
+  1. Pool overview
+     - Name, status (ONLINE/DEGRADED/FAULTED), used/available, health bar
+     - Last scrub time and result
+     - Buttons: [Scrub now]  [Export pool]
+
+  2. Dataset tree
+     - Collapsible tree: system/, apps/, storage/ and children
+     - Per row: dataset name, used, compression ratio, mountpoint
+     - Row actions: [Snapshot] [Destroy] [Properties]
+
+  3. Snapshots
+     - Flat list sorted by creation date (newest first)
+     - Columns: dataset, snapshot name, creation time, size, type (auto/manual/backup)
+     - Row actions: [Rollback] [Clone] [Destroy]
+
+  4. Pool migration — "Set as main pool"
+     - Dropdown: select target pool (lists all imported pools except current main)
+     - What it does:
+         a. Takes snapshot of current main pool
+         b. zfs send -Rp | zfs receive to target pool (progress bar)
+         c. Marks target pool: zfs set pinneos:managed=yes TARGET
+         d. Marks old pool:    zfs set pinneos:managed=no  OLD
+         e. Notifies user to reboot
+     - Status: idle / copying (% done) / done — reboot required
+
+  ─────────────────────────────────────────────────────────────────────────
+  5. BACKUP & RESTORE
+  ─────────────────────────────────────────────────────────────────────────
+
+  5a. Backup — Create
+      - Mode selector (radio):
+          ○ System + Apps     (system/ and apps/ — enough to restore a working system)
+          ● System + Apps + Storage  (full backup — includes all user data)
+      - Destination selector (radio):
+          ○ ZFS pool / dataset  [input: pool name or pool/dataset]
+          ○ Directory / mount   [input: path, e.g. /mnt/external]
+      - [Run backup now] button
+        → calls: cockpit.spawn(['/usr/lib/homelab/backup.sh', 'create',
+                                '--mode', mode, '--dest', dest])
+        → streams output to a log textarea
+        → shows: "Backup complete. Snapshot: pinneos-backup-2024-01-01T12:00:00Z"
+
+  5b. Backup — Schedule
+      - Toggle: [Enable scheduled backups]
+      - When enabled:
+          - Destination: [input]
+          - Mode: [dropdown: system-apps | full]
+          - Retention: keep last [N] snapshots (default 7)
+      - Saves to /etc/homelab/backup-schedule
+      - Enables/disables pinneos-backup.timer via systemctl
+
+  5c. Backup — History
+      - Table: lists snapshots tagged as backup snapshots across all datasets
+      - Columns: snapshot, datasets included, created, size
+      - Row action: [Restore from this backup]
+
+  5d. Restore
+      - Source selector:
+          ○ Another ZFS pool  [input: pool or pool/dataset]
+          ○ Directory / mount  [input: path]
+      - [List available backups] → populates snapshot dropdown
+      - Snapshot selector: [dropdown of available snapshots]
+      - Mode: [System + Apps | Full]
+      - Destination pool: [input — must be an existing, empty pool]
+      - [Run restore] button (red — destructive action)
+        → confirmation dialog: "This will overwrite DEST_POOL. Continue?"
+        → calls: cockpit.spawn(['/usr/lib/homelab/restore.sh', 'run',
+                                '--source', src, '--snapshot', snap,
+                                '--dest', dest, '--mode', mode])
+        → streams output to log textarea
+        → on success: shows next-steps instructions:
+            "1. Mark pool as managed: zfs set pinneos:managed=yes DEST
+             2. Set as main pool (see Pool migration above)
+             3. Reboot"
+
+  ─────────────────────────────────────────────────────────────────────────
+
+  Implementation notes:
+  - Use cockpit.spawn() for all ZFS commands — never inline shell in JS
+  - Long operations (backup, restore, migration) must stream stdout line by line
+    to a <pre> element so the user sees progress
+  - Destructive actions (restore, rollback, destroy) require a modal confirmation
+  - Error output (stderr) shown in red in the log area
+  - Disable buttons while an operation is in progress
+-->
+
+<div id="app">
+  <p style="color:#888">PinneOS Cockpit ZFS plugin — implementation in progress.<br>
+  See comments in this file for the full UI plan.</p>
+</div>
+
+</body>
+</html>

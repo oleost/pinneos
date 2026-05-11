@@ -1,0 +1,78 @@
+# PinneOS package list
+# Replaces the archiso releng defaults with our homelab-focused selection.
+
+# ── Live boot (REQUIRED) ──────────────────────────────────────────────────────
+# archiso: build tool (pulled in by build process, needed for runtime configs)
+# mkinitcpio-archiso: provides the actual hooks/archiso runtime script that
+#   mounts the SquashFS at boot — WITHOUT this, the initramfs has no archiso hook.
+archiso
+mkinitcpio-archiso
+
+# ── Base system ───────────────────────────────────────────────────────────────
+base
+linux-lts
+linux-lts-headers
+linux-firmware
+systemd
+systemd-sysvcompat
+mkinitcpio
+
+# ── Bootloader ────────────────────────────────────────────────────────────────
+grub
+efibootmgr
+syslinux
+
+# ── ZFS — DKMS approach (reliable: compiles against exact kernel in image) ────
+# zfs-dkms 2.4.1 from archzfs experimental (OpenZFS Dec 2025 release).
+# Has native kernel 6.16+ support — no source patches needed.
+zfs-dkms
+zfs-utils
+dkms
+gcc
+make
+
+# ── Networking ────────────────────────────────────────────────────────────────
+networkmanager
+avahi
+nss-mdns
+openssh
+curl
+wget
+iproute2
+iputils
+
+# ── System utilities ──────────────────────────────────────────────────────────
+sudo
+util-linux
+procps-ng
+e2fsprogs
+dosfstools
+f2fs-tools
+parted
+usbutils
+pciutils
+smartmontools
+lsof
+strace
+
+# ── Scripting / tools ─────────────────────────────────────────────────────────
+bash
+jq
+rsync
+nano
+git
+htop
+ncdu
+zstd
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker
+docker-compose
+docker-buildx
+
+# ── Web admin panel ───────────────────────────────────────────────────────────
+cockpit
+
+# ── First-boot wizard + cockpit-zfs backend ───────────────────────────────────
+python
+python-pip

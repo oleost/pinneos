@@ -1,0 +1,17 @@
+- System:
+    - Cockpit:
+        href: http://pinneos.local:9090
+        description: System administration
+        icon: cockpit.png
+        ping: http://pinneos.local:9090
+
+    - Dockge:
+        href: http://pinneos.local:5001
+        description: Docker Compose manager
+        icon: docker.png
+        ping: http://pinneos.local:5001
+
+- Storage:
+    - ZFS:
+        description: Managed via Cockpit → PinneOS
+        icon: hard-disk.png

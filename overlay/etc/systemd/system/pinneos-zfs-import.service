@@ -1,0 +1,15 @@
+[Unit]
+Description=PinneOS ZFS pool import
+DefaultDependencies=no
+After=systemd-udev-settle.service
+# Ensure Docker waits for ZFS so /var/lib/docker comes from ZFS, not tmpfs
+Before=docker.service local-fs.target
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/homelab/zfs-import.sh
+
+[Install]
+WantedBy=local-fs.target

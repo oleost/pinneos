@@ -1,0 +1,54 @@
+# PinneOS GRUB configuration
+# Variables read from grubenv on the Persist partition (sda4):
+#   boot_slot   = A or B
+#   boot_tries  = 0..2 (auto-rollback after 2 failed attempts)
+
+set default=0
+set timeout=3
+
+# Load environment from Persist partition
+search --label --set=persist PINNEOS_PERSIST
+if [ -f ($persist)/grubenv ]; then
+    load_env --file ($persist)/grubenv
+fi
+
+# Auto-rollback: if this slot has failed twice, switch to the other
+if [ "${boot_tries}" -ge 2 ]; then
+    if [ "${boot_slot}" = "A" ]; then
+        set boot_slot=B
+    else
+        set boot_slot=A
+    fi
+    set boot_tries=0
+    save_env --file ($persist)/grubenv boot_slot boot_tries
+fi
+
+# Increment try counter (reset to 0 by initramfs on successful boot)
+set boot_tries=$(( boot_tries + 1 ))
+save_env --file ($persist)/grubenv boot_tries
+
+# Select slot partition
+if [ "${boot_slot}" = "B" ]; then
+    search --label --set=root PINNEOS_B
+else
+    search --label --set=root PINNEOS_A
+fi
+
+menuentry "PinneOS" {
+    linux  /vmlinuz archisobasedir=pinneos archisolabel=PINNEOS_${boot_slot} \
+                    quiet loglevel=3 systemd.show_status=false \
+                    pinneos.slot=${boot_slot}
+    initrd /initramfs.img
+}
+
+menuentry "PinneOS (verbose)" {
+    linux  /vmlinuz archisobasedir=pinneos archisolabel=PINNEOS_${boot_slot} \
+                    pinneos.slot=${boot_slot}
+    initrd /initramfs.img
+}
+
+menuentry "Recovery shell" {
+    linux  /vmlinuz archisobasedir=pinneos archisolabel=PINNEOS_${boot_slot} \
+                    pinneos.recovery=1 systemd.unit=rescue.target
+    initrd /initramfs.img
+}

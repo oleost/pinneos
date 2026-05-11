@@ -1,0 +1,28 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: pinneos-homepage
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - /etc/homelab/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: "*"
+
+  dockge:
+    image: louislam/dockge:1
+    container_name: pinneos-dockge
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/stacks:/opt/stacks
+      - dockge-data:/app/data
+    environment:
+      DOCKGE_STACKS_DIR: /opt/stacks
+
+volumes:
+  dockge-data:

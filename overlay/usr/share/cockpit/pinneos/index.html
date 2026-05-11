@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PinneOS</title>
+  <script src="../base1/cockpit.js"></script>
+  <link rel="stylesheet" href="pinneos.css">
+</head>
+<body>
+
+<nav class="tabs">
+  <button class="tab-btn active" id="tab-btn-setup">Setup</button>
+  <button class="tab-btn" id="tab-btn-zfs">ZFS</button>
+  <button class="tab-btn" id="tab-btn-backup">Backup</button>
+  <button class="tab-btn" id="tab-btn-access">Access</button>
+</nav>
+
+<!-- SETUP TAB -->
+<div id="pane-setup" class="pane">
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">Hostname</div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:14px;">
+          How this server identifies itself on the network.
+          Reachable as <strong id="hostname-preview">http://pinneos.local</strong>
+        </p>
+        <div class="row">
+          <input type="text" id="hostname-input" placeholder="pinneos">
+          <button class="btn btn-primary" id="btn-save-hostname">Save</button>
+        </div>
+        <div id="hostname-alert"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Admin password</div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:14px;">
+          Password for the <strong>root</strong> account (console and Cockpit login).<br>
+          Without a ZFS pool this resets on every reboot.
+        </p>
+        <div class="form-group">
+          <label for="pw1">New password</label>
+          <input type="password" id="pw1" autocomplete="new-password" placeholder="minimum 8 characters">
+        </div>
+        <div class="form-group">
+          <label for="pw2">Confirm password</label>
+          <input type="password" id="pw2" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary" id="btn-save-password">Change password</button>
+        <div id="password-alert"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header card-header-flex">
+        <span>Backup USB</span>
+        <button class="btn btn-secondary" id="btn-refresh-backup-usb">↻ Refresh</button>
+      </div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:14px;">
+          A second PinneOS USB (written with Etcher) kept plugged in.<br>
+          Auto-synced when connected and after updates — instant fallback if primary fails.
+        </p>
+        <div id="backup-usb-registered" style="margin-bottom:12px;"></div>
+        <div id="backup-usb-candidates"></div>
+        <div id="backup-usb-sync-log" class="log-area" style="display:none;margin-top:12px;"></div>
+        <div id="backup-usb-alert"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ZFS TAB -->
+<div id="pane-zfs" class="pane" style="display:none">
+  <div class="grid">
+
+    <!-- Pools -->
+    <div class="card">
+      <div class="card-header card-header-flex">
+        <span>Pools</span>
+        <button class="btn btn-primary" id="btn-show-create-pool">+ Create pool</button>
+      </div>
+      <div class="card-body">
+        <div id="create-pool-form" class="inline-form" style="display:none">
+          <div class="form-group">
+            <label>Pool name</label>
+            <input type="text" id="pool-name" placeholder="tank">
+          </div>
+          <div class="form-group">
+            <label>Available disks</label>
+            <div id="disk-list">Loading…</div>
+          </div>
+          <div class="form-group">
+            <label for="pool-topology">Topology</label>
+            <select id="pool-topology" class="select">
+              <option value="stripe">Stripe (no redundancy)</option>
+              <option value="mirror">Mirror (RAID-1, 2+ disks)</option>
+              <option value="raidz">RAID-Z1 (3+ disks, 1 parity)</option>
+              <option value="raidz2">RAID-Z2 (4+ disks, 2 parity)</option>
+              <option value="raidz3">RAID-Z3 (5+ disks, 3 parity)</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-create-pool">Create</button>
+            <button class="btn btn-secondary" id="btn-cancel-create-pool">Cancel</button>
+          </div>
+          <div id="create-pool-alert"></div>
+        </div>
+        <div id="pool-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Datasets -->
+    <div class="card">
+      <div class="card-header card-header-flex">
+        <span>Datasets — <select id="dataset-pool-select" class="select-inline"></select></span>
+        <button class="btn btn-primary" id="btn-show-create-dataset">+ Create dataset</button>
+      </div>
+      <div class="card-body">
+        <div id="create-dataset-form" class="inline-form" style="display:none">
+          <div class="row">
+            <div class="form-group" style="margin-bottom:0;flex:1">
+              <label>Dataset name (under selected pool)</label>
+              <input type="text" id="dataset-name" placeholder="data">
+            </div>
+            <button class="btn btn-primary" id="btn-create-dataset" style="align-self:flex-end">Create</button>
+            <button class="btn btn-secondary" id="btn-cancel-create-dataset" style="align-self:flex-end">Cancel</button>
+          </div>
+          <div id="create-dataset-alert"></div>
+        </div>
+        <div id="dataset-table-wrap"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- BACKUP TAB -->
+<div id="pane-backup" class="pane" style="display:none">
+  <div class="grid">
+
+    <!-- Create backup -->
+    <div class="card">
+      <div class="card-header">Create backup</div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:14px;">
+          Snapshots the managed ZFS pool and sends it to a destination pool or dataset.<br>
+          Subsequent runs send only the diff (incremental).
+        </p>
+        <div class="form-group">
+          <label for="backup-dest">Destination (ZFS pool or dataset)</label>
+          <input type="text" id="backup-dest" placeholder="backup-pool">
+        </div>
+        <div class="form-group">
+          <label>Mode</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="backup-mode" value="system-apps" checked>
+              System + Apps <span class="hint">(system/, apps/ — enough to restore a working server)</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="backup-mode" value="full">
+              Full <span class="hint">(+ storage/ — includes all user data)</span>
+            </label>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-run-backup">Run backup</button>
+        <div id="backup-log" class="log-area" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- List snapshots -->
+    <div class="card">
+      <div class="card-header">Browse backups</div>
+      <div class="card-body">
+        <div class="row" style="margin-bottom:16px;">
+          <div class="form-group" style="margin-bottom:0;flex:1">
+            <label for="backup-list-dest">Destination to inspect</label>
+            <input type="text" id="backup-list-dest" placeholder="backup-pool">
+          </div>
+          <button class="btn btn-primary" id="btn-list-backups" style="align-self:flex-end">List</button>
+        </div>
+        <div id="backup-list-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Restore -->
+    <div class="card">
+      <div class="card-header">Restore</div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:14px;">
+          Restores datasets from a backup pool to a destination pool.<br>
+          The destination pool must exist. Works in recovery mode without an active pool.
+        </p>
+        <div class="form-group">
+          <label for="restore-source">Source (backup pool or dataset)</label>
+          <input type="text" id="restore-source" placeholder="backup-pool">
+        </div>
+        <div class="form-group">
+          <label for="restore-snapshot">Snapshot <span class="hint">(leave blank for most recent)</span></label>
+          <input type="text" id="restore-snapshot" placeholder="pinneos-backup-2026-05-11T…">
+        </div>
+        <div class="form-group">
+          <label for="restore-dest">Destination pool</label>
+          <input type="text" id="restore-dest" placeholder="tank">
+        </div>
+        <div class="form-group">
+          <label>Mode</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="restore-mode" value="system-apps" checked>
+              System + Apps
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="restore-mode" value="full">
+              Full
+            </label>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-run-restore">Restore</button>
+        <div id="restore-log" class="log-area" style="display:none"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ACCESS TAB -->
+<div id="pane-access" class="pane" style="display:none">
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">Access</div>
+      <div class="card-body">
+        <dl class="dl">
+          <dt>IP address</dt>  <dd id="info-ip">detecting…</dd>
+          <dt>Cockpit</dt>     <dd id="info-cockpit">—</dd>
+          <dt>Docker UI</dt>   <dd id="info-dockge">—</dd>
+          <dt>Dashboard</dt>   <dd id="info-homepage">—</dd>
+          <dt>ZFS pool</dt>    <dd id="info-pool">checking…</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="pinneos.js"></script>
+</body>
+</html>

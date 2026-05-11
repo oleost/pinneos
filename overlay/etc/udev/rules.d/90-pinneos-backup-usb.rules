@@ -1,0 +1,6 @@
+# Detect PinneOS backup USB stick by UUID stored in /etc/homelab/backup-usb-uuid
+# When found, trigger the sync service.
+
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", \
+    PROGRAM="/usr/lib/homelab/match-backup-usb.sh %k", \
+    RUN+="/bin/systemctl start pinneos-backup-usb-sync@%k.service"

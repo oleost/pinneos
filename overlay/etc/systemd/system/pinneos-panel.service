@@ -1,0 +1,14 @@
+[Unit]
+Description=PinneOS web panel (Homepage + Dockge)
+After=docker.service pinneos-zfs-import.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker-compose -f /etc/homelab/panel/docker-compose.yml up -d
+ExecStop=/usr/bin/docker-compose -f /etc/homelab/panel/docker-compose.yml down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

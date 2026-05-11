@@ -1,0 +1,9 @@
+- resources:
+    cpu: true
+    memory: true
+    disk: /
+    cacheInterval: 10
+
+- search:
+    provider: duckduckgo
+    target: _blank

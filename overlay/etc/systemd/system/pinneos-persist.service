@@ -1,0 +1,13 @@
+[Unit]
+Description=Mount PinneOS Persist partition and confirm boot success
+DefaultDependencies=no
+After=local-fs-pre.target
+Before=local-fs.target sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/homelab/pinneos-persist.sh
+
+[Install]
+WantedBy=local-fs.target

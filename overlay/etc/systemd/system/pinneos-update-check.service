@@ -1,0 +1,10 @@
+[Unit]
+Description=PinneOS update check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/homelab/update-check.sh
+StandardOutput=journal
+StandardError=journal

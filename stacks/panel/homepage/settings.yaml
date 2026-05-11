@@ -1,0 +1,16 @@
+---
+# Homepage settings
+title: PinneOS
+description: Homelab dashboard
+
+# Show favicon from Cockpit for the system link
+favicon: https://raw.githubusercontent.com/cockpit-project/cockpit/main/pkg/static/favicon.ico
+
+# Layout
+layout:
+  System:
+    style: row
+    columns: 3
+  Apps:
+    style: row
+    columns: 4

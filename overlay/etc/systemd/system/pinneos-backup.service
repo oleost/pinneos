@@ -1,0 +1,15 @@
+[Unit]
+Description=PinneOS scheduled backup
+After=network-online.target pinneos-zfs-import.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Reads backup destination from /etc/homelab/backup-schedule
+# Expected format:  BACKUP_DEST=pool/backups   BACKUP_MODE=system-apps
+EnvironmentFile=-/etc/homelab/backup-schedule
+ExecStart=/usr/lib/homelab/backup.sh create \
+    --dest ${BACKUP_DEST} \
+    --mode ${BACKUP_MODE:-system-apps}
+StandardOutput=journal
+StandardError=journal

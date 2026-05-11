@@ -1,0 +1,11 @@
+[Unit]
+Description=PinneOS daily backup timer
+# Only active if /etc/homelab/backup-schedule exists (configured via Cockpit)
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

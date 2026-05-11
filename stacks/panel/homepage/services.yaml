@@ -1,0 +1,31 @@
+---
+# Homepage service links
+# Edit this file to add your own services.
+
+- System:
+    - Cockpit:
+        href: http://pinneos.local:9090
+        description: System administration (ZFS, network, services)
+        icon: cockpit.png
+
+    - Dockge:
+        href: http://pinneos.local:5001
+        description: Docker Compose stack manager
+        icon: dockge.png
+
+    - Terminal:
+        href: http://pinneos.local:9090/cockpit/@localhost/system/terminal.html
+        description: Web terminal via Cockpit
+        icon: terminal.png
+
+# Add your own services below.
+# Example:
+# - Apps:
+#     - Jellyfin:
+#         href: http://pinneos.local:8096
+#         description: Media server
+#         icon: jellyfin.png
+#         widget:
+#           type: jellyfin
+#           url: http://jellyfin:8096
+#           key: YOUR_API_KEY

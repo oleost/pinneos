@@ -1,0 +1,35 @@
+# PinneOS runtime configuration
+# This file is baked into the image at build time.
+# Per-installation overrides live on the ZFS system dataset.
+
+PINNEOS_VERSION="dev"
+
+# ZFS import strategy: scan (reliable) or cache (faster but stale-prone)
+ZFS_IMPORT_MODE=scan
+
+# Pool label used to identify PinneOS-managed pools
+# zfs set pinneos:managed=yes <pool> is set during first-boot wizard
+ZFS_MANAGED_PROPERTY="pinneos:managed"
+
+# Dataset mount points (relative to pool root)
+DATASET_SYSTEM="system"
+DATASET_APPS="apps"
+DATASET_STORAGE="storage"
+
+# Docker data directory — must match apps dataset mountpoint
+DOCKER_DATA_DIR="/var/lib/docker"
+
+# Web panel ports
+PORT_HOMEPAGE=80
+PORT_COCKPIT=9090
+PORT_DOCKGE=5001
+
+# mDNS hostname (before first-boot wizard sets the real one)
+MDNS_HOSTNAME="pinneos"
+
+# Update channel: stable or edge
+UPDATE_CHANNEL=stable
+UPDATE_CHECK_URL="https://api.github.com/repos/yourorg/pinneos/releases/latest"
+
+# Backup USB: delay in seconds before syncing after a master update (24h)
+BACKUP_USB_SYNC_DELAY=86400

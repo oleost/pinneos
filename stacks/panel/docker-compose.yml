@@ -1,0 +1,38 @@
+# PinneOS admin panel stack
+# Deploy this after ZFS is set up and /var/lib/docker is on the apps dataset.
+#
+# Usage:
+#   cp -r /path/to/stacks/panel /opt/stacks/panel
+#   cd /opt/stacks/panel && docker compose up -d
+#
+# Or via Dockge: paste this file into a new stack.
+
+services:
+
+  # ── Dockge: Docker Compose stack manager ────────────────────────────────────
+  dockge:
+    image: louislam/dockge:latest
+    container_name: dockge
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/stacks:/opt/stacks          # where compose stacks live on ZFS
+      - dockge-data:/app/data
+    environment:
+      - DOCKGE_STACKS_DIR=/opt/stacks
+
+  # ── Homepage: dashboard / landing page ──────────────────────────────────────
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - /opt/stacks/panel/homepage:/app/config   # config lives on ZFS
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  dockge-data:

@@ -1,0 +1,9 @@
+title: PinneOS
+description: Homelab dashboard
+theme: dark
+color: slate
+headerStyle: clean
+layout:
+  System:
+    style: row
+    columns: 4

@@ -1,0 +1,10 @@
+release/
+*.img
+*.img.zst
+*.iso
+*.sha256
+*.json
+__pycache__/
+*.pyc
+.env
+.claude/

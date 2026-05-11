@@ -1,0 +1,9 @@
+[Unit]
+Description=PinneOS backup USB sync for /dev/%i
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/homelab/backup-usb-sync.sh /dev/%i
+StandardOutput=journal
+StandardError=journal
