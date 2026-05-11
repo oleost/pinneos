@@ -1,5 +1,10 @@
 # PinneOS
 
+> **⚠️ Pre-alpha — not ready for use.**
+> This project is vibe-coded and under active development. Expect broken builds, missing features, and no guarantees of stability. Do not run this on anything you care about.
+
+---
+
 > *"pinne"* — Norwegian for *stick*. The USB stick is the ignition key. Everything else lives on your disks.
 
 PinneOS is a custom Linux distribution for homelab enthusiasts who want a server that is trivially restorable, safely upgradeable, and hardware-independent.
