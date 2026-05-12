@@ -1,4 +1,4 @@
-name: Build ISO
+name: Build and release
 
 on:
   push:
@@ -32,11 +32,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building version: $VERSION"
 
-      - name: Build and release ISO
+      - name: Build ISO + IMG and compress for release
         working-directory: build
         run: make release VERSION=${{ steps.version.outputs.version }}
 
-      - name: Upload artifacts (every run)
+      - name: Upload artifacts (every run, 7-day retention)
         uses: actions/upload-artifact@v4
         with:
           name: pinneos-${{ steps.version.outputs.version }}
@@ -51,5 +51,6 @@ jobs:
           generate_release_notes: true
           files: |
             release/pinneos-*.iso
+            release/pinneos-*.img.gz
             release/pinneos-*.sha256
             release/pinneos-*.json

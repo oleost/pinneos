@@ -1,5 +1,6 @@
 release/
 *.img
+*.img.gz
 *.img.zst
 *.iso
 *.sha256

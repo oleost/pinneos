@@ -95,6 +95,20 @@ Connect a second PinneOS USB to the same machine. Register it in the setup wizar
 
 ## Quick start
 
+### Download a pre-built image (easiest)
+
+Go to [Releases](https://github.com/oleost/pinneos/releases) and download:
+- `pinneos-VERSION-x86_64.img.gz` — A/B USB image for Etcher *(recommended)*
+- `pinneos-VERSION-x86_64.iso` — boot ISO for QEMU/VirtualBox
+
+**Write to USB:**
+
+- **Windows / macOS:** Open [BalenaEtcher](https://etcher.balena.io), select `pinneos-*.img.gz`, write to USB. Done.
+- **Rufus:** Select `pinneos-*.img.gz` → **DD Image mode** → write.
+- **Linux:** `gunzip -c pinneos-*.img.gz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync`
+
+### Build from source
+
 **Prerequisites:** Docker and `make` on your build machine.
 
 ```bash
@@ -109,14 +123,8 @@ make image VERSION=0.1.0
 
 # Output:
 #   release/pinneos-0.1.0-x86_64.iso     — boot ISO for QEMU/VirtualBox
-#   release/pinneos-0.1.0-x86_64.img — A/B USB image for Etcher
+#   release/pinneos-0.1.0-x86_64.img     — A/B USB image for Etcher (raw)
 ```
-
-**Write to USB:**
-
-- **Windows / macOS:** Open [BalenaEtcher](https://etcher.balena.io), select `pinneos-*.img`, write to USB. Done.
-- **Rufus:** Select `pinneos-*.img` → **DD Image mode** → write.
-- **Linux:** `make write DEVICE=/dev/sdX VERSION=0.1.0`
 
 **Test in QEMU before writing:**
 

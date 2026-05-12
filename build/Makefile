@@ -57,7 +57,9 @@ write:
 
 release: image
 	sha256sum "$(IMAGE)" > "$(IMAGE).sha256"
-	sha256sum "$(IMG)"   > "$(IMG).sha256"
+	@echo "Compressing IMG for release (this takes a few minutes)..."
+	gzip -k -9 "$(IMG)"
+	sha256sum "$(IMG).gz" > "$(IMG).gz.sha256"
 	printf '{"version":"%s","min_compatible":"0.1.0","channel":"stable"}\n' \
 	    "$(VERSION)" > "../release/pinneos-$(VERSION)-manifest.json"
 	@echo "Release artifacts:"
