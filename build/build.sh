@@ -132,6 +132,7 @@ SLOTB_LOOP=$(  attach_loop "${IMG_RAW}" -o $((2563 * MiB)) --sizelimit $((2048 *
 PERSIST_LOOP=$(attach_loop "${IMG_RAW}" -o $((4611 * MiB)) --sizelimit $((  689 * MiB)))
 
 echo "    Formatting partitions..."
+modprobe f2fs 2>/dev/null || true
 mkfs.fat  -F32 -n PINNEOS_EFI  "${EFI_LOOP}"
 mkfs.ext4 -L PINNEOS_A -q -F   "${SLOTA_LOOP}"
 mkfs.ext4 -L PINNEOS_B -q -F   "${SLOTB_LOOP}"
