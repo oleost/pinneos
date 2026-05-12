@@ -132,11 +132,15 @@ SLOTB_LOOP=$(  attach_loop "${IMG_RAW}" -o $((2563 * MiB)) --sizelimit $((2048 *
 PERSIST_LOOP=$(attach_loop "${IMG_RAW}" -o $((4611 * MiB)) --sizelimit $((  689 * MiB)))
 
 echo "    Formatting partitions..."
-modprobe f2fs 2>/dev/null || true
 mkfs.fat  -F32 -n PINNEOS_EFI  "${EFI_LOOP}"
 mkfs.ext4 -L PINNEOS_A -q -F   "${SLOTA_LOOP}"
 mkfs.ext4 -L PINNEOS_B -q -F   "${SLOTB_LOOP}"
-mkfs.f2fs -l PINNEOS_PERSIST -f "${PERSIST_LOOP}"
+if modprobe f2fs 2>/dev/null && mkfs.f2fs -l PINNEOS_PERSIST -f "${PERSIST_LOOP}" 2>/dev/null; then
+    echo "    Persist partition: f2fs"
+else
+    echo "    Persist partition: ext4 (f2fs unavailable on this kernel)"
+    mkfs.ext4 -L PINNEOS_PERSIST -q -F "${PERSIST_LOOP}"
+fi
 
 # Slot B only needs formatting — detach it now to free a loop slot
 losetup -d "${SLOTB_LOOP}"; SLOTB_LOOP=""
