@@ -1,7 +1,7 @@
 VERSION  ?= dev
 DEVICE   ?=
 IMAGE     = ../release/pinneos-$(VERSION)-x86_64.iso
-IMG       = ../release/pinneos-$(VERSION)-x86_64.img.zst
+IMG       = ../release/pinneos-$(VERSION)-x86_64.img.xz
 BUILDER   = pinneos-builder
 
 .PHONY: build image clean write release qemu help
@@ -9,7 +9,7 @@ BUILDER   = pinneos-builder
 help:
 	@echo "PinneOS build targets:"
 	@echo "  make build           Build the Docker build container"
-	@echo "  make image           Build ISO + A/B USB image (Etcher-ready .img.zst)"
+	@echo "  make image           Build ISO + A/B USB image (Etcher-ready .img.xz)"
 	@echo "  make write DEVICE=X  Quick dd ISO to USB for VM/testing (no A/B)"
 	@echo "  make release         Build + generate SHA256 + manifest"
 	@echo "  make qemu            Boot ISO in QEMU for local testing"
@@ -28,7 +28,7 @@ image: build
 		$(BUILDER) $(VERSION)
 
 clean:
-	rm -rf ../release/*.iso ../release/*.img.zst ../release/*.sha256 ../release/*.json
+	rm -rf ../release/*.iso ../release/*.img.xz ../release/*.sha256 ../release/*.json
 
 write:
 	@test -n "$(DEVICE)" || (echo "Usage: make write DEVICE=/dev/sdX" && exit 1)

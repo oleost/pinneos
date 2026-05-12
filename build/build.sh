@@ -45,7 +45,7 @@ echo "==> Done: ${OUT}/pinneos-${VERSION}-x86_64.iso"
 echo "==> Building A/B USB image..."
 ISO="${OUT}/pinneos-${VERSION}-x86_64.iso"
 IMG_RAW="${OUT}/pinneos-${VERSION}-x86_64.img"
-IMG_ZST="${IMG_RAW}.zst"
+IMG_XZ="${IMG_RAW}.xz"
 
 # Partition byte offsets (all in MiB, converted below):
 #   p1 bios_boot:      2–3 MiB   (1 MiB, no filesystem)
@@ -188,10 +188,12 @@ sync
 umount "${PERSIST_MNT}"; losetup -d "${PERSIST_LOOP}"; PERSIST_LOOP=""
 trap - EXIT
 
-echo "    Compressing to .img.zst (zstd -9)..."
-zstd -T0 -9 --rm "${IMG_RAW}" -o "${IMG_ZST}"
+echo "    Compressing to .img.xz (xz -6, Etcher/Rufus compatible)..."
+xz -T0 -6 --keep "${IMG_RAW}"
+mv "${IMG_RAW}.xz" "${IMG_XZ}"
+rm -f "${IMG_RAW}"
 
 echo ""
 echo "==> Build complete:"
 echo "    ISO: ${OUT}/pinneos-${VERSION}-x86_64.iso"
-echo "    IMG: ${OUT}/pinneos-${VERSION}-x86_64.img.zst"
+echo "    IMG: ${OUT}/pinneos-${VERSION}-x86_64.img.xz"
