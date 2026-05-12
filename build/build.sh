@@ -32,20 +32,22 @@ cp -a /overlay/. "${PROFILE}/airootfs/"
 # Stamp the version into the live image
 echo "$VERSION" > "${PROFILE}/airootfs/etc/pinneos-version"
 
-echo "==> Running mkarchiso (first run downloads ~1 GB of packages — takes 10-20 min)..."
-mkarchiso -v -w "${WORK}" -o "${OUT}" "${PROFILE}"
-
-# Rename output to our naming convention
-find "${OUT}" -maxdepth 1 -name "*.iso" \
-    -exec mv {} "${OUT}/pinneos-${VERSION}-x86_64.iso" \;
+ISO="${OUT}/pinneos-${VERSION}-x86_64.iso"
+if [ "${SKIP_ISO:-0}" = "1" ] && [ -f "${ISO}" ]; then
+    echo "==> Skipping mkarchiso (SKIP_ISO=1, reusing ${ISO})"
+else
+    echo "==> Running mkarchiso (first run downloads ~1 GB of packages — takes 10-20 min)..."
+    mkarchiso -v -w "${WORK}" -o "${OUT}" "${PROFILE}"
+    find "${OUT}" -maxdepth 1 -name "*.iso" \
+        -exec mv {} "${ISO}" \;
+fi
 
 echo "==> Done: ${OUT}/pinneos-${VERSION}-x86_64.iso"
 
 # ── Build A/B USB image (.img.zst) ────────────────────────────────────────────
 echo "==> Building A/B USB image..."
-ISO="${OUT}/pinneos-${VERSION}-x86_64.iso"
 IMG_RAW="${OUT}/pinneos-${VERSION}-x86_64.img"
-IMG_XZ="${IMG_RAW}.xz"
+IMG_OUT="${IMG_RAW}"
 
 # Partition byte offsets (all in MiB, converted below):
 #   p1 bios_boot:      2–3 MiB   (1 MiB, no filesystem)
@@ -162,15 +164,18 @@ grub-install \
     --target=x86_64-efi \
     --efi-directory="${EFI_MNT}" \
     --boot-directory="${EFI_MNT}/grub" \
+    --modules="part_gpt part_msdos fat ext2 f2fs search search_fs_uuid" \
     --removable \
     --no-nvram \
     --recheck \
     "${DISK_LOOP}"
 
 # BIOS: writes boot record to MBR + core.img to bios_boot partition via DISK_LOOP
+# part_gpt must be baked into core.img — without it GRUB can't read GPT on real hardware
 grub-install \
     --target=i386-pc \
     --boot-directory="${EFI_MNT}/grub" \
+    --modules="part_gpt part_msdos fat ext2 f2fs search search_fs_uuid" \
     --recheck \
     "${DISK_LOOP}"
 
@@ -188,12 +193,7 @@ sync
 umount "${PERSIST_MNT}"; losetup -d "${PERSIST_LOOP}"; PERSIST_LOOP=""
 trap - EXIT
 
-echo "    Compressing to .img.xz (xz -6, Etcher/Rufus compatible)..."
-xz -T0 -6 --keep "${IMG_RAW}"
-mv "${IMG_RAW}.xz" "${IMG_XZ}"
-rm -f "${IMG_RAW}"
-
 echo ""
 echo "==> Build complete:"
 echo "    ISO: ${OUT}/pinneos-${VERSION}-x86_64.iso"
-echo "    IMG: ${OUT}/pinneos-${VERSION}-x86_64.img.xz"
+echo "    IMG: ${OUT}/pinneos-${VERSION}-x86_64.img"

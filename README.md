@@ -109,13 +109,13 @@ make image VERSION=0.1.0
 
 # Output:
 #   release/pinneos-0.1.0-x86_64.iso     — boot ISO for QEMU/VirtualBox
-#   release/pinneos-0.1.0-x86_64.img.xz — A/B USB image for Etcher
+#   release/pinneos-0.1.0-x86_64.img — A/B USB image for Etcher
 ```
 
 **Write to USB:**
 
-- **Windows / macOS:** Open [BalenaEtcher](https://etcher.balena.io), select `pinneos-*.img.xz`, write to USB. Done.
-- **Rufus:** Select `pinneos-*.img.xz` → **DD Image mode** → write.
+- **Windows / macOS:** Open [BalenaEtcher](https://etcher.balena.io), select `pinneos-*.img`, write to USB. Done.
+- **Rufus:** Select `pinneos-*.img` → **DD Image mode** → write.
 - **Linux:** `make write DEVICE=/dev/sdX VERSION=0.1.0`
 
 **Test in QEMU before writing:**
@@ -197,7 +197,7 @@ sda4  F2FS    ~rest    Persist (grubenv: boot_slot, boot_tries)
 ## Project status
 
 - **v0.1.0** — Initial release
-  - Full A/B USB build pipeline (Etcher-ready `.img.xz`)
+  - Full A/B USB build pipeline (Etcher-ready `.img`)
   - ZFS auto-import at boot (userspace service, no initramfs complexity)
   - Backup USB registration and auto-sync
   - Cockpit plugin: ZFS pool/dataset management, backup/restore UI

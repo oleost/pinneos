@@ -1,15 +1,16 @@
 VERSION  ?= dev
 DEVICE   ?=
 IMAGE     = ../release/pinneos-$(VERSION)-x86_64.iso
-IMG       = ../release/pinneos-$(VERSION)-x86_64.img.xz
+IMG       = ../release/pinneos-$(VERSION)-x86_64.img
 BUILDER   = pinneos-builder
 
-.PHONY: build image clean write release qemu help
+.PHONY: build image img clean write release qemu help
 
 help:
 	@echo "PinneOS build targets:"
 	@echo "  make build           Build the Docker build container"
-	@echo "  make image           Build ISO + A/B USB image (Etcher-ready .img.xz)"
+	@echo "  make image           Build ISO + A/B USB image (.img, Etcher-ready)"
+	@echo "  make img             Rebuild only the .img (reuses existing ISO, ~5 min)"
 	@echo "  make write DEVICE=X  Quick dd ISO to USB for VM/testing (no A/B)"
 	@echo "  make release         Build + generate SHA256 + manifest"
 	@echo "  make qemu            Boot ISO in QEMU for local testing"
@@ -27,8 +28,21 @@ image: build
 		-v $(realpath ../release):/out \
 		$(BUILDER) $(VERSION)
 
+img: build
+	@test -f ../release/pinneos-$(VERSION)-x86_64.iso || \
+	    (echo "No ISO found. Run: make image VERSION=$(VERSION)" && exit 1)
+	@mkdir -p ../release
+	@rm -f ../release/pinneos-$(VERSION)-x86_64.img
+	docker run --rm --privileged \
+		-v $(realpath ../build/profile):/profile:ro \
+		-v $(realpath ../overlay):/overlay:ro \
+		-v $(realpath ../grub):/grub:ro \
+		-v $(realpath ../release):/out \
+		-e SKIP_ISO=1 \
+		$(BUILDER) $(VERSION)
+
 clean:
-	rm -rf ../release/*.iso ../release/*.img.xz ../release/*.sha256 ../release/*.json
+	rm -rf ../release/*.iso ../release/*.img ../release/*.sha256 ../release/*.json
 
 write:
 	@test -n "$(DEVICE)" || (echo "Usage: make write DEVICE=/dev/sdX" && exit 1)
