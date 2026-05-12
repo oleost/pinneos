@@ -1,0 +1,177 @@
+name: Weekly update check
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # Every Monday 08:00 UTC
+  workflow_dispatch:        # Manual trigger: Actions → Run workflow
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check component versions
+        id: versions
+        run: |
+          set -euo pipefail
+
+          # ── OpenZFS latest ───────────────────────────────────────────────────
+          ZFS_LATEST=$(curl -s https://api.github.com/repos/openzfs/zfs/releases \
+            | jq -r '[.[] | select(.prerelease==false and .draft==false)] | .[0].tag_name' \
+            | sed 's/zfs-//')
+          echo "zfs_latest=$ZFS_LATEST" >> "$GITHUB_OUTPUT"
+
+          # ── ZFS compatibility range for that release ─────────────────────────
+          META=$(curl -s "https://raw.githubusercontent.com/openzfs/zfs/refs/tags/zfs-${ZFS_LATEST}/META" 2>/dev/null || echo "")
+          ZFS_KERNEL_MIN=$(echo "$META" | grep '^Linux-Minimum:' | awk '{print $2}' || echo "unknown")
+          ZFS_KERNEL_MAX=$(echo "$META" | grep '^Linux-Maximum:' | awk '{print $2}' || echo "no upper limit")
+          echo "zfs_kernel_min=$ZFS_KERNEL_MIN" >> "$GITHUB_OUTPUT"
+          echo "zfs_kernel_max=$ZFS_KERNEL_MAX" >> "$GITHUB_OUTPUT"
+
+          # ── linux-lts latest (kernel.org JSON) ──────────────────────────────
+          KERNEL_LTS=$(curl -s https://www.kernel.org/releases.json \
+            | jq -r '.releases[] | select(.moniker=="longterm") | .version' \
+            | sort -V | tail -1)
+          echo "kernel_lts=$KERNEL_LTS" >> "$GITHUB_OUTPUT"
+
+          # ── Arch Linux packages ──────────────────────────────────────────────
+          arch_pkg_version() {
+            curl -s "https://archlinux.org/packages/search/json/?name=$1&arch=x86_64" \
+              | jq -r '.results[0].pkgver // "unknown"'
+          }
+          COCKPIT_VER=$(arch_pkg_version cockpit)
+          DOCKER_VER=$(arch_pkg_version docker)
+          ARCHISO_VER=$(arch_pkg_version archiso)
+          GRUB_VER=$(arch_pkg_version grub)
+          echo "cockpit=$COCKPIT_VER"   >> "$GITHUB_OUTPUT"
+          echo "docker=$DOCKER_VER"     >> "$GITHUB_OUTPUT"
+          echo "archiso=$ARCHISO_VER"   >> "$GITHUB_OUTPUT"
+          echo "grub=$GRUB_VER"         >> "$GITHUB_OUTPUT"
+
+          # ── Homepage latest ──────────────────────────────────────────────────
+          HOMEPAGE_LATEST=$(curl -s https://api.github.com/repos/gethomepage/homepage/releases/latest \
+            | jq -r '.tag_name')
+          echo "homepage=$HOMEPAGE_LATEST" >> "$GITHUB_OUTPUT"
+
+          # ── Dockge latest ────────────────────────────────────────────────────
+          DOCKGE_LATEST=$(curl -s https://api.github.com/repos/louislam/dockge/releases/latest \
+            | jq -r '.tag_name')
+          echo "dockge=$DOCKGE_LATEST" >> "$GITHUB_OUTPUT"
+
+          # ── Current tracked versions (from this repo) ────────────────────────
+          ZFS_CURRENT=$(grep -oP 'zfs-dkms \K[0-9]+\.[0-9]+\.[0-9]+' docs/components.md | head -1 || echo "unknown")
+          echo "zfs_current=$ZFS_CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Check kernel vs ZFS compatibility
+        id: compat
+        run: |
+          KERNEL="${{ steps.versions.outputs.kernel_lts }}"
+          ZFS_MIN="${{ steps.versions.outputs.zfs_kernel_min }}"
+          ZFS_MAX="${{ steps.versions.outputs.zfs_kernel_max }}"
+
+          # Simple major.minor version comparison
+          kernel_major=$(echo "$KERNEL" | cut -d. -f1)
+          kernel_minor=$(echo "$KERNEL" | cut -d. -f2)
+          min_major=$(echo "$ZFS_MIN" | cut -d. -f1)
+          min_minor=$(echo "$ZFS_MIN" | cut -d. -f2)
+
+          COMPAT="✅ OK"
+          if [ "$ZFS_MAX" != "no upper limit" ]; then
+            max_major=$(echo "$ZFS_MAX" | cut -d. -f1)
+            max_minor=$(echo "$ZFS_MAX" | cut -d. -f2)
+            if [ "$kernel_major" -gt "$max_major" ] || \
+               ([ "$kernel_major" -eq "$max_major" ] && [ "$kernel_minor" -gt "$max_minor" ]); then
+              COMPAT="⚠️ KERNEL TOO NEW for ZFS ${{ steps.versions.outputs.zfs_latest }}"
+            fi
+          fi
+          echo "compat=$COMPAT" >> "$GITHUB_OUTPUT"
+
+      - name: Open update issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const v = {
+              zfsCurrent:  '${{ steps.versions.outputs.zfs_current }}',
+              zfsLatest:   '${{ steps.versions.outputs.zfs_latest }}',
+              zfsKernMin:  '${{ steps.versions.outputs.zfs_kernel_min }}',
+              zfsKernMax:  '${{ steps.versions.outputs.zfs_kernel_max }}',
+              kernelLts:   '${{ steps.versions.outputs.kernel_lts }}',
+              cockpit:     '${{ steps.versions.outputs.cockpit }}',
+              docker:      '${{ steps.versions.outputs.docker }}',
+              archiso:     '${{ steps.versions.outputs.archiso }}',
+              grub:        '${{ steps.versions.outputs.grub }}',
+              homepage:    '${{ steps.versions.outputs.homepage }}',
+              dockge:      '${{ steps.versions.outputs.dockge }}',
+              compat:      '${{ steps.versions.outputs.compat }}',
+            };
+
+            const zfsUpgrade = v.zfsCurrent !== v.zfsLatest
+              ? `⚠️ ZFS upgrade available: **${v.zfsCurrent} → ${v.zfsLatest}**`
+              : `✅ ZFS up to date (${v.zfsCurrent})`;
+
+            const body = `## PinneOS weekly update report
+
+            _Generated ${new Date().toISOString().split('T')[0]} by [update-check workflow](https://github.com/${{ github.repository }}/actions/workflows/update-check.yml)_
+
+            ### ZFS ↔ kernel compatibility
+            | | Value |
+            |---|---|
+            | linux-lts latest | \`${v.kernelLts}\` |
+            | ZFS ${v.zfsLatest} supports | kernel \`${v.zfsKernMin}\` – \`${v.zfsKernMax || 'no upper limit'}\` |
+            | Compatibility | ${v.compat} |
+
+            ### Component versions available today
+            | Component | Latest available | Notes |
+            |-----------|-----------------|-------|
+            | ZFS (zfs-dkms) | \`${v.zfsLatest}\` | ${zfsUpgrade} |
+            | linux-lts | \`${v.kernelLts}\` | Pulled fresh at build time |
+            | cockpit | \`${v.cockpit}\` | Pulled fresh at build time |
+            | docker | \`${v.docker}\` | Pulled fresh at build time |
+            | archiso | \`${v.archiso}\` | Build tool — check for breaking changes |
+            | grub | \`${v.grub}\` | Pulled fresh at build time |
+            | Homepage | \`${v.homepage}\` | :latest tag, pulled at first boot |
+            | Dockge | \`${v.dockge}\` | Pinned to :1 in compose |
+
+            ### Action items
+            ${v.compat.startsWith('⚠️') ? `- [ ] **BLOCKER:** ${v.compat} — do not release until ZFS is updated\n` : ''}
+            ${v.zfsCurrent !== v.zfsLatest ? `- [ ] Update ZFS to ${v.zfsLatest} — check \`META\` file for kernel compat range, update \`pacman.conf\`\n` : ''}
+            - [ ] Review [OpenZFS changelog](https://github.com/openzfs/zfs/releases) for breaking changes
+            - [ ] Run \`make image VERSION=X.Y.Z\` and test boot
+            - [ ] Update version history table in \`docs/components.md\`
+            - [ ] Tag and release: \`git tag vX.Y.Z && git push origin vX.Y.Z\`
+
+            ---
+            _See [docs/components.md](../blob/main/docs/components.md) for full compatibility matrix and update checklist._`;
+
+            // Check if an open update issue already exists — update it instead of creating a new one
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'update-check',
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                title: `Update check ${new Date().toISOString().split('T')[0]}`,
+                body,
+              });
+              console.log(`Updated existing issue #${existing.data[0].number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Update check ${new Date().toISOString().split('T')[0]}`,
+                body,
+                labels: ['update-check'],
+              });
+              console.log('Created new issue');
+            }

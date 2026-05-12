@@ -258,6 +258,7 @@ This repo includes a `/add-app` slash command for Claude Code. If you use Claude
 - [Installation](docs/installation.md)
 - [Development](docs/development.md)
 - [Recommended apps](docs/apps.md) — top 10 self-hosted apps with ready-to-use compose stacks
+- [Component inventory](docs/components.md) — all versions, compatibility constraints, and update checklist
 
 ---
 
