@@ -22,10 +22,10 @@ build:
 image: build
 	@mkdir -p ../release
 	docker run --rm --privileged \
-		-v $(realpath ../build/profile):/profile:ro \
-		-v $(realpath ../overlay):/overlay:ro \
-		-v $(realpath ../grub):/grub:ro \
-		-v $(realpath ../release):/out \
+		-v $(abspath ../build/profile):/profile:ro \
+		-v $(abspath ../overlay):/overlay:ro \
+		-v $(abspath ../grub):/grub:ro \
+		-v $(abspath ../release):/out \
 		$(BUILDER) $(VERSION)
 
 img: build
@@ -34,10 +34,10 @@ img: build
 	@mkdir -p ../release
 	@rm -f ../release/pinneos-$(VERSION)-x86_64.img
 	docker run --rm --privileged \
-		-v $(realpath ../build/profile):/profile:ro \
-		-v $(realpath ../overlay):/overlay:ro \
-		-v $(realpath ../grub):/grub:ro \
-		-v $(realpath ../release):/out \
+		-v $(abspath ../build/profile):/profile:ro \
+		-v $(abspath ../overlay):/overlay:ro \
+		-v $(abspath ../grub):/grub:ro \
+		-v $(abspath ../release):/out \
 		-e SKIP_ISO=1 \
 		$(BUILDER) $(VERSION)
 
