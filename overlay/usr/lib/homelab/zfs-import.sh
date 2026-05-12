@@ -34,6 +34,15 @@ for pool in $(zpool list -H -o name 2>/dev/null); do
             zfs_mounted=1
         fi
 
+        # Set storage dataset ownership for app containers (PUID=1000 / PGID=1000).
+        # Only top-level dirs — don't recurse over potentially TBs of user data.
+        storage_mp=$(zfs get -H -o value mountpoint "${pool}/${DATASET_STORAGE}" 2>/dev/null)
+        if [ -n "$storage_mp" ] && [ "$storage_mp" != "none" ] && [ -d "$storage_mp" ]; then
+            chown homelab:homelab "$storage_mp"
+            find "$storage_mp" -maxdepth 1 -mindepth 1 -type d \
+                -exec chown homelab:homelab {} \;
+        fi
+
         log "Pool $pool ready."
         break
     fi

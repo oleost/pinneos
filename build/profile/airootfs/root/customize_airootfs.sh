@@ -96,6 +96,13 @@ echo "  Root shell: $(grep "^root:" /etc/passwd | cut -d: -f7)"
 echo "  Shadow entry (should start with \$6\$):"
 grep "^root:" /etc/shadow | cut -d: -f1-3
 
+# ── homelab system user (uid/gid 1000) ───────────────────────────────────────
+# All Docker app containers run as PUID=1000 PGID=1000.
+# Storage datasets are chowned to this user after ZFS import.
+groupadd --gid 1000 homelab
+useradd --system --uid 1000 --gid 1000 \
+    --no-create-home --shell /usr/sbin/nologin homelab
+
 # ── PinneOS config directory ─────────────────────────────────────────────────
 mkdir -p /etc/homelab
 chmod 755 /etc/homelab
