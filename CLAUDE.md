@@ -231,32 +231,83 @@ ZFS send/receive is the native mechanism for pool-level backup and replication.
 
 ---
 
+## Docker app conventions
+
+All Docker containers on PinneOS run as `PUID=1000 PGID=1000` (the `homelab` system user,
+baked into the image). `zfs-import.sh` chowns the storage dataset top-level dirs to
+`homelab:homelab` after pool import.
+
+**Volume layout** (pool name varies — set by user during setup, default placeholder is `tank`):
+- App config/state: `/POOL/apps/<appname>/` — bind-mount into container
+- User data: `/POOL/storage/` — owned by homelab user
+- Internal databases users never touch: Docker named volumes (auto-created in `/var/lib/docker/volumes/`, lives on apps dataset)
+
+**Image preference:** `lscr.io/linuxserver/<app>` first (native PUID/PGID support).
+If no lscr image: `user: "1000:1000"` in compose. `user: root` only as last resort.
+
+**Slash command:** `.claude/commands/add-app.md` — invoke `/add-app <appname>` in Claude Code
+to get a correctly configured compose stack following PinneOS conventions.
+
+See `docs/apps.md` for top-10 recommended apps with ready-to-use compose stacks.
+See `docs/components.md` for component versions, compatibility matrix, and update checklist.
+
+---
+
+## GRUB installation approach (important)
+
+`grub-install` is NOT used in `build.sh`. It embeds a UUID from the loop device that
+doesn't match on real hardware. Instead:
+
+- **UEFI:** `grub-mkimage` with `--config=<early_cfg>` embedding `search --no-floppy --label --set=root PINNEOS_EFI` + `set prefix=($root)/grub`. Modules: `part_gpt part_msdos fat search search_label`.
+- **BIOS:** `grub-mkimage` to produce `core.img`, then `grub-bios-setup --skip-fs-probe`.
+- The `-p /grub` flag is required by `grub-mkimage` even when `--config` is specified.
+- All x86_64-efi and i386-pc modules are copied to the FAT32 EFI partition at build time.
+
+---
+
+## Backup USB dual-USB behaviour
+
+Both USBs share identical partition labels (PINNEOS_A, PINNEOS_B, PINNEOS_PERSIST, PINNEOS_EFI).
+`findfs LABEL=PINNEOS_A` is ambiguous when both are connected.
+
+**Fix in `backup-usb-sync.sh`:** Resolve the active slot by tracing the persist mount
+(`/run/pinneos/persist`) back to its source device → parent disk = boot USB → find
+PINNEOS_A only on that disk. Never use `findfs` for active slot lookup.
+
+**Fix in `match-backup-usb.sh`:** udev passes the disk device (`sdb`), but the stored
+UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsblk`.
+
+---
+
 ## Implementation status
 
 ### Done ✓
 - Repository structure and build system
 - Docker-based archiso build pipeline
-- GRUB A/B slot config template
+- GRUB A/B slot config (grub-mkimage + embedded search_label — no grub-install)
 - All systemd service units (ZFS import, update check, backup USB sync, backup timer)
 - Runtime scripts: `zfs-import.sh`, `update.sh`, `update-check.sh`, `backup-usb-sync.sh`, `backup.sh`, `restore.sh`
 - Backup and restore system (full and incremental, pool-to-pool and file-based)
-- Cockpit ZFS plugin (skeleton + full UI plan documented in comments)
+- Cockpit PinneOS plugin (full JS implementation in `overlay/usr/share/cockpit/pinneos/`)
 - Docker daemon config (overlay2, log rotation)
 - mDNS setup (avahi + nss-mdns for pinneos.local)
 - udev rules for backup USB detection
+- `homelab` system user (uid=1000, gid=1000) — Docker app convention
+- Component inventory and weekly automated update checks (`docs/components.md`, `.github/workflows/update-check.yml`)
+- GitHub Actions CI: builds ISO+IMG.gz on tag push, creates draft release
+- **v0.1.0 tested on real hardware (ASUS UEFI PC) — boots correctly**
+- **Backup USB sync tested and working** (dual-USB dual-label bug fixed)
 
 ### In progress / TODO
-- ISO hardware/VM testing — boot `pinneos-0.1.0-x86_64.iso` in VirtualBox or on bare metal
-- `wizard/tui/wizard.py` — first-boot wizard (Phase 1: network, hostname, password)
-- `cockpit-zfs/index.html` — implement the ZFS plugin UI (sections 1-5 planned in comments)
-- Cockpit backup/restore UI (section 5 documented in cockpit-zfs/index.html)
-- Homepage + Dockge container definitions (docker-compose.yml for the panel stack)
+- First-boot wizard does not auto-launch at login yet (wizard exists at `/usr/lib/homelab/wizard.py` but getty auto-launch not configured)
+- `cockpit-zfs/index.html` — the old ZFS plugin skeleton; the real plugin is in `overlay/usr/share/cockpit/pinneos/`
+- Cockpit plugin: ZFS pool/dataset management UI (section 1-4 planned in pinneos.js comments)
 - First-boot web wizard Phase 2 (ZFS pool creation UI in Cockpit)
-- GitHub Actions CI workflow for automated ISO builds on tag push
 
 ### Known gaps
+- Password doesn't persist across reboots without ZFS pool (works with ZFS system/ dataset)
 - The `update.sh` script has a TODO: extracting squashfs/kernel/initramfs from the downloaded IMG file
-- `wizard/tui/wizard.py` is a skeleton (placeholder screens documented as comments)
+- A/B USB update flow not yet tested end-to-end on real hardware
 - ARM/Raspberry Pi support: parked as v2 scope
 
 ### Bootmode history
