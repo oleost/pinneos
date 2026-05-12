@@ -207,6 +207,43 @@ sda4  F2FS    ~rest    Persist (grubenv: boot_slot, boot_tries)
 
 ---
 
+## Adding apps
+
+All Docker apps run as `PUID=1000 PGID=1000` (the `homelab` system user baked into the image). After first boot and ZFS pool creation, the layout is:
+
+```
+/POOLNAME/apps/<appname>/   ← app config and state (persists across reboots)
+/POOLNAME/storage/media/    ← media files
+/POOLNAME/storage/shared/   ← shared files
+/POOLNAME/storage/backups/  ← backups
+```
+
+Prefer [LinuxServer.io](https://docs.linuxserver.io) images — they support `PUID`/`PGID` natively and are actively maintained. Example for Jellyfin:
+
+```yaml
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Oslo
+    ports:
+      - "8096:8096"
+    volumes:
+      - /POOLNAME/apps/jellyfin:/config
+      - /POOLNAME/storage/media:/media
+    restart: unless-stopped
+```
+
+Paste the stack into Dockge at `http://pinneos.local:5001`.
+
+### Claude Code users
+
+This repo includes a `/add-app` slash command for Claude Code. If you use Claude Code to work on this project, type `/add-app plex` (or any app name) and Claude will generate a correctly configured compose stack following PinneOS conventions — right pool paths, right user, right image.
+
+---
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
