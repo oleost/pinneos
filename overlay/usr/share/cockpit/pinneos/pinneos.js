@@ -591,7 +591,7 @@ function renderBackupUsbCandidates(candidates) {
   if (!candidates.length) {
     wrap.innerHTML =
       '<p class="hint">No other PinneOS USB detected. ' +
-      'Write the .img.zst to a second USB with Etcher, plug it in, then click ↻ Refresh.</p>';
+      'Write the .img to a second USB with Etcher, plug it in, then click ↻ Refresh.</p>';
     return;
   }
   var html = '<p style="margin:0 0 8px;font-weight:600">Detected PinneOS USBs:</p>';

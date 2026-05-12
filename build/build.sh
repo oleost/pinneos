@@ -159,24 +159,40 @@ umount "${ISO_MNT}";    losetup -d "${ISO_LOOP}";   ISO_LOOP=""
 echo "    Installing GRUB (UEFI + BIOS)..."
 mount "${EFI_LOOP}" "${EFI_MNT}"
 
-# UEFI: copies files only, no EFI variable writes (--removable --no-nvram)
-grub-install \
-    --target=x86_64-efi \
-    --efi-directory="${EFI_MNT}" \
-    --boot-directory="${EFI_MNT}/grub" \
-    --modules="part_gpt part_msdos fat ext2 f2fs search search_fs_uuid" \
-    --removable \
-    --no-nvram \
-    --recheck \
-    "${DISK_LOOP}"
+# Both UEFI and BIOS GRUB embed this early config so they find the boot partition
+# by filesystem label (PINNEOS_EFI) rather than a UUID baked in at build time.
+# UUID lookup breaks on real hardware because it was generated against a loop device.
+GRUB_EARLY_CFG="/tmp/grub-early-$$.cfg"
+cat > "${GRUB_EARLY_CFG}" << 'EARLYCFG'
+search --no-floppy --label --set=root PINNEOS_EFI
+set prefix=($root)/grub
+EARLYCFG
 
-# BIOS: writes boot record to MBR + core.img to bios_boot partition via DISK_LOOP
-# part_gpt must be baked into core.img — without it GRUB can't read GPT on real hardware
-grub-install \
-    --target=i386-pc \
-    --boot-directory="${EFI_MNT}/grub" \
-    --modules="part_gpt part_msdos fat ext2 f2fs search search_fs_uuid" \
-    --recheck \
+# ── UEFI (x86_64-efi) ───────────────────────────────────────────────────────
+mkdir -p "${EFI_MNT}/EFI/BOOT" "${EFI_MNT}/grub"
+cp -r /usr/lib/grub/x86_64-efi "${EFI_MNT}/grub/"
+grub-mkimage \
+    -d /usr/lib/grub/x86_64-efi \
+    -o "${EFI_MNT}/EFI/BOOT/BOOTX64.EFI" \
+    -O x86_64-efi \
+    -p /grub \
+    --config="${GRUB_EARLY_CFG}" \
+    part_gpt part_msdos fat search search_label
+
+# ── BIOS (i386-pc) ──────────────────────────────────────────────────────────
+cp -r /usr/lib/grub/i386-pc "${EFI_MNT}/grub/"
+grub-mkimage \
+    -d /usr/lib/grub/i386-pc \
+    -o "${EFI_MNT}/grub/i386-pc/core.img" \
+    -O i386-pc \
+    -p /grub \
+    --config="${GRUB_EARLY_CFG}" \
+    part_gpt part_msdos fat search search_label biosdisk
+rm -f "${GRUB_EARLY_CFG}"
+
+grub-bios-setup \
+    --skip-fs-probe \
+    --directory="${EFI_MNT}/grub/i386-pc" \
     "${DISK_LOOP}"
 
 cp /grub/grub.cfg.template "${EFI_MNT}/grub/grub.cfg"

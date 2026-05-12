@@ -34,20 +34,40 @@ mount "$backup_dev" /mnt/pinneos-backup
 
 # Determine active slot
 active_slot=$(grub-editenv "$GRUBENV" list | grep boot_slot | cut -d= -f2)
-active_label="PINNEOS_${active_slot}"
-active_dev=$(findfs "LABEL=$active_label")
+[ -n "$active_slot" ] || die "Could not read boot_slot from grubenv"
+
+# Both USBs have identical partition labels, so look up the active slot only on
+# the boot disk. The persist partition is always mounted from the boot USB at
+# early boot, so its source device tells us which disk is the boot USB.
+persist_src=$(findmnt -n -o SOURCE "$PERSIST_MOUNT" 2>/dev/null) || die "Persist partition not mounted at $PERSIST_MOUNT"
+boot_disk=$(lsblk -no pkname "$persist_src" 2>/dev/null)
+[ -n "$boot_disk" ] || die "Could not determine boot disk from persist mount ($persist_src)"
+active_dev=$(lsblk -lpno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
+    | awk -v label="PINNEOS_${active_slot}" '$2==label {print $1; exit}')
+[ -n "$active_dev" ] || die "PINNEOS_${active_slot} not found on boot disk /dev/$boot_disk"
 
 mkdir -p /mnt/pinneos-active
 mount "$active_dev" /mnt/pinneos-active -o ro
 
-# Sync slot contents
+# Sync slot contents (squashfs, vmlinuz, initramfs)
 rsync -a --checksum --delete /mnt/pinneos-active/ /mnt/pinneos-backup/
 sync
 
-# Ensure backup USB is bootable
-grub-install --boot-directory=/mnt/pinneos-backup/boot --removable \
-    "$(lsblk -no pkname "/dev/$(basename "$backup_dev")")"
-
 umount /mnt/pinneos-active /mnt/pinneos-backup
+
+# Update grubenv on the backup USB's persist partition so it boots the same slot.
+# GRUB itself is static (installed at image-build time) and doesn't need reinstalling.
+backup_disk=$(lsblk -no pkname "$backup_dev" 2>/dev/null)
+backup_persist=$(lsblk -lpno NAME,LABEL "/dev/$backup_disk" 2>/dev/null \
+    | awk '$2=="PINNEOS_PERSIST" {print $1; exit}')
+if [ -n "$backup_persist" ]; then
+    BACKUP_PERSIST_MNT="/mnt/pinneos-backup-persist"
+    mkdir -p "$BACKUP_PERSIST_MNT"
+    mount "$backup_persist" "$BACKUP_PERSIST_MNT"
+    grub-editenv "$BACKUP_PERSIST_MNT/grubenv" set boot_slot="$active_slot"
+    grub-editenv "$BACKUP_PERSIST_MNT/grubenv" set boot_tries=0
+    sync
+    umount "$BACKUP_PERSIST_MNT"
+fi
 
 log "Backup USB sync complete."
