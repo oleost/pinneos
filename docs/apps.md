@@ -338,6 +338,41 @@ Add monitors for: Cockpit (:9090), Jellyfin (:8096), Dockge (:5001), and any oth
 
 ---
 
+## 11. Gotify — Push notifications
+
+Self-hosted push notification server. Sends alerts from PinneOS (disk failures, ZFS scrub errors)
+to your phone via the Gotify Android/iOS app.
+
+```yaml
+services:
+  gotify:
+    image: gotify/server:latest
+    user: "1000:1000"
+    ports:
+      - "8008:80"
+    volumes:
+      - /tank/apps/gotify:/app/data
+    restart: unless-stopped
+```
+
+Open: `http://pinneos.local:8008`
+Setup:
+```bash
+mkdir -p /tank/apps/gotify && chown 1000:1000 /tank/apps/gotify
+```
+
+After setup, create an app token in the Gotify UI and configure PinneOS to use it:
+```bash
+echo "http://pinneos.local:8008" > /etc/homelab/gotify-url
+echo "<your-app-token>"          > /etc/homelab/gotify-token
+```
+
+PinneOS will then send push notifications to Gotify for:
+- SMART disk warnings and failures
+- ZFS scrub errors
+
+---
+
 ## Port reference
 
 | App | Port | URL |
@@ -355,3 +390,4 @@ Add monitors for: Cockpit (:9090), Jellyfin (:8096), Dockge (:5001), and any oth
 | Sonarr | 8989 | `http://pinneos.local:8989` |
 | Radarr | 7878 | `http://pinneos.local:7878` |
 | Uptime Kuma | 3001 | `http://pinneos.local:3001` |
+| Gotify | 8008 | `http://pinneos.local:8008` |

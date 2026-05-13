@@ -1,0 +1,8 @@
+[Unit]
+Description=PinneOS ZFS scrub
+After=pinneos-zfs-import.service
+Requires=pinneos-zfs-import.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/homelab/zfs-scrub.sh

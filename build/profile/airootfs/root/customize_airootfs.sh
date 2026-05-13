@@ -81,6 +81,8 @@ systemctl enable pinneos-persist.service
 systemctl enable pinneos-zfs-import.service
 systemctl enable pinneos-update-check.timer
 systemctl enable pinneos-panel.service
+systemctl enable pinneos-zfs-scrub.timer
+systemctl enable smartd.service
 
 # ── Panel directories ─────────────────────────────────────────────────────────
 mkdir -p /opt/stacks
