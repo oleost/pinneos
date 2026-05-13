@@ -57,14 +57,18 @@ No new scripts needed. No new UI needed beyond cockpit-machines itself.
 
 ---
 
-## Open question
+## Primary use-case: AMP (CubeCoders Application Management Panel)
 
-The use-case is not yet defined. VM support makes most sense for:
-- Running something that has no Docker image (legacy software, full OS testing)
+**AMP requires a VM — Docker is explicitly unsupported by CubeCoders.**
+
+AMP is a game server management platform (Minecraft, Valheim, CS2, etc.) that needs control over the host OS to start and manage game server processes. CubeCoders staff have stated clearly: "Docker is the wrong platform to run AMP's core in." The Docker image on Docker Hub (`cubecoders/amp`) is 6 years old, marked "UNSUPPORTED", and is not an official CubeCoders release. The recommended approach for Unraid (similar concept to PinneOS) is to run AMP inside a VM.
+
+This is a legitimate and concrete use-case that Docker cannot satisfy — AMP is a management layer that itself needs to start processes and own the OS environment.
+
+Other valid use-cases in the same category:
 - Network appliances (pfSense, OPNsense) that need direct hardware access
-- Windows VMs
-
-If the primary use-case is just running Linux services, Docker covers it better. Clarify the use-case before starting implementation.
+- Windows-only game servers (AMP for Windows can manage these inside a Windows VM)
+- Any software that explicitly requires non-containerized installation
 
 ---
 
