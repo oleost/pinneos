@@ -248,7 +248,7 @@ If no lscr image: `user: "1000:1000"` in compose. `user: root` only as last reso
 **Slash command:** `.claude/commands/add-app.md` — invoke `/add-app <appname>` in Claude Code
 to get a correctly configured compose stack following PinneOS conventions.
 
-See `docs/apps.md` for top-10 recommended apps with ready-to-use compose stacks.
+See `docs/apps.md` for top-12 recommended apps with ready-to-use compose stacks.
 See `docs/components.md` for component versions, compatibility matrix, and update checklist.
 
 ---
@@ -297,18 +297,24 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
 - GitHub Actions CI: builds ISO+IMG.gz on tag push, creates draft release
 - **v0.1.0 tested on real hardware (ASUS UEFI PC) — boots correctly**
 - **Backup USB sync tested and working** (dual-USB dual-label bug fixed)
+- SMART disk monitoring (`smartd` + `smart-alert.sh` — logs to journal, optional Gotify push)
+- ZFS scrub timer (`pinneos-zfs-scrub.timer` — monthly, all managed pools)
+- Gotify push notification integration (optional, configure via `/etc/homelab/gotify-{url,token}`)
 
 ### In progress / TODO
 - First-boot wizard does not auto-launch at login yet (wizard exists at `/usr/lib/homelab/wizard.py` but getty auto-launch not configured)
 - `cockpit-zfs/index.html` — the old ZFS plugin skeleton; the real plugin is in `overlay/usr/share/cockpit/pinneos/`
-- Cockpit plugin: ZFS pool/dataset management UI (section 1-4 planned in pinneos.js comments)
+- Cockpit plugin: ZFS pool/dataset management UI — pool status, scrub status, last scrub result (section 1-4 planned in pinneos.js comments)
 - First-boot web wizard Phase 2 (ZFS pool creation UI in Cockpit)
+- ZFS native encryption support — full plan in `docs/zfs-encryption-plan.md`
+- VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager
 
 ### Known gaps
 - Password doesn't persist across reboots without ZFS pool (works with ZFS system/ dataset)
 - The `update.sh` script has a TODO: extracting squashfs/kernel/initramfs from the downloaded IMG file
 - A/B USB update flow not yet tested end-to-end on real hardware
 - ARM/Raspberry Pi support: parked as v2 scope
+- Cockpit ZFS tab has no visual UI for pool health or scrub status yet (planned, see TODO above)
 
 ### Bootmode history
 - `bios.grub.mbr` was attempted but is not a valid archiso boot mode (removed in newer archiso versions)

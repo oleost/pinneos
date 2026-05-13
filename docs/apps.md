@@ -373,6 +373,40 @@ PinneOS will then send push notifications to Gotify for:
 
 ---
 
+## 12. Scrutiny — Disk health dashboard
+
+Visual SMART monitoring with historical trends. Shows all disks, their SMART attributes,
+temperature history, and highlights values that are deteriorating over time.
+Integrates with smartd (already running in PinneOS) via a collector sidecar.
+
+```yaml
+services:
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:master-omnibus
+    cap_add:
+      - SYS_RAWIO
+    ports:
+      - "8081:8080"
+    volumes:
+      - /run/udev:/run/udev:ro
+      - /tank/apps/scrutiny/config:/opt/scrutiny/config
+      - /tank/apps/scrutiny/influxdb:/opt/scrutiny/influxdb
+    devices:
+      - /dev/sda:/dev/sda
+    restart: unless-stopped
+```
+
+Open: `http://pinneos.local:8081`
+Setup:
+```bash
+mkdir -p /tank/apps/scrutiny/{config,influxdb}
+```
+
+Note: Add a `devices:` entry for each disk you want to monitor (e.g. `/dev/sdb:/dev/sdb`).
+The `omnibus` image includes both the web UI and the collector in one container.
+
+---
+
 ## Port reference
 
 | App | Port | URL |
@@ -391,3 +425,4 @@ PinneOS will then send push notifications to Gotify for:
 | Radarr | 7878 | `http://pinneos.local:7878` |
 | Uptime Kuma | 3001 | `http://pinneos.local:3001` |
 | Gotify | 8008 | `http://pinneos.local:8008` |
+| Scrutiny | 8081 | `http://pinneos.local:8081` |
