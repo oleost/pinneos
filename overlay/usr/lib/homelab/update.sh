@@ -68,15 +68,15 @@ if [ -n "$local_file" ]; then
         *.img.gz)
             log "Decompressing $local_file..."
             gzip -dc "$local_file" > "$tmpdir/new.img"
-            log "Mounting raw image (partition 2 = Slot A)..."
+            log "Mounting raw image (partition 3 = Slot A)..."
             loop_dev=$(losetup -f --show -P "$tmpdir/new.img")
-            mount -o ro "${loop_dev}p2" "$src_mnt"
+            mount -o ro "${loop_dev}p3" "$src_mnt"
             img_mode=1
             ;;
         *.img)
-            log "Mounting raw image (partition 2 = Slot A)..."
+            log "Mounting raw image (partition 3 = Slot A)..."
             loop_dev=$(losetup -f --show -P "$local_file")
-            mount -o ro "${loop_dev}p2" "$src_mnt"
+            mount -o ro "${loop_dev}p3" "$src_mnt"
             img_mode=1
             ;;
         *.iso)
@@ -128,9 +128,9 @@ else
         log "Decompressing image..."
         gzip -d "$tmpdir/new.img.gz"   # produces new.img
 
-        log "Mounting raw image (partition 2 = Slot A)..."
+        log "Mounting raw image (partition 3 = Slot A)..."
         loop_dev=$(losetup -f --show -P "$tmpdir/new.img")
-        mount -o ro "${loop_dev}p2" "$src_mnt"
+        mount -o ro "${loop_dev}p3" "$src_mnt"
         img_mode=1
     else
         sum_url=$(echo "$manifest" | jq -r \
