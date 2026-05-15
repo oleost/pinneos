@@ -16,6 +16,9 @@ DATASET_SYSTEM="system"
 DATASET_APPS="apps"
 DATASET_STORAGE="storage"
 
+# USB persist partition mount point (F2FS, always mounted at boot)
+PERSIST_MOUNT="/run/pinneos/persist"
+
 # Docker data directory — must match apps dataset mountpoint
 DOCKER_DATA_DIR="/var/lib/docker"
 

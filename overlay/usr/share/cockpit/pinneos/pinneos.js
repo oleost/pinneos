@@ -136,6 +136,10 @@ function checkZfsPool() {
 // ── ZFS tab ───────────────────────────────────────────────────────────────────
 
 function loadZfs() {
+  document.getElementById('create-pool-form').style.display = 'none';
+  document.getElementById('encrypt-pool').checked = false;
+  document.getElementById('encrypt-fields').style.display = 'none';
+  clearAlert('create-pool-alert');
   loadPools();
   loadDisks();
   checkUnlockStatus();
@@ -784,30 +788,24 @@ function renderEncryptionCard(encryptedPools) {
 
     if (isUnlocked) {
       html +=
-        '<div id="' + eid + '-chpass" style="display:none;margin-bottom:12px">' +
-          '<div class="form-group" style="margin-bottom:8px">' +
-            '<label>Current passphrase</label>' +
-            '<input type="password" id="' + eid + '-old">' +
-          '</div>' +
-          '<div class="form-group" style="margin-bottom:8px">' +
-            '<label>New passphrase (min 12 chars)</label>' +
-            '<input type="password" id="' + eid + '-new1">' +
-          '</div>' +
-          '<div class="form-group" style="margin-bottom:8px">' +
-            '<label>Confirm new passphrase</label>' +
-            '<input type="password" id="' + eid + '-new2">' +
-          '</div>' +
-          '<div class="btn-row">' +
-            '<button class="btn btn-primary" id="' + eid + '-btn-chpass">Change</button>' +
-            '<button class="btn btn-secondary" id="' + eid + '-btn-cancel-chpass">Cancel</button>' +
-          '</div>' +
-          '<div id="' + eid + '-chpass-alert"></div>' +
+        '<p style="font-size:12px;font-weight:600;margin:0 0 8px;color:#6a6e73;text-transform:uppercase;letter-spacing:.04em">Change passphrase</p>' +
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Current passphrase</label>' +
+          '<input type="password" id="' + eid + '-old">' +
         '</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-          '<button class="btn btn-secondary" id="' + eid + '-btn-show-chpass">Change passphrase</button>' +
-          '<button class="btn btn-secondary" id="' + eid + '-btn-chk-kf">Check keyfile on USB</button>' +
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>New passphrase (min 12 chars)</label>' +
+          '<input type="password" id="' + eid + '-new1">' +
         '</div>' +
-        '<div id="' + eid + '-kf-info" style="display:none;margin-top:8px"></div>';
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Confirm new passphrase</label>' +
+          '<input type="password" id="' + eid + '-new2">' +
+        '</div>' +
+        '<button class="btn btn-primary" id="' + eid + '-btn-chpass">Save new passphrase</button>' +
+        '<div id="' + eid + '-chpass-alert" style="margin-top:8px"></div>' +
+        '<hr style="margin:16px 0;border:none;border-top:1px solid #d2d2d2">' +
+        '<p style="font-size:12px;font-weight:600;margin:0 0 8px;color:#6a6e73;text-transform:uppercase;letter-spacing:.04em">Auto-unlock on boot</p>' +
+        '<div id="' + eid + '-kf-info"><span class="hint">Checking…</span></div>';
     }
 
     html += '</div>';
@@ -815,20 +813,10 @@ function renderEncryptionCard(encryptedPools) {
 
     if (isUnlocked) {
       var pn = p.name;
-      document.getElementById(eid + '-btn-show-chpass').addEventListener('click', function() {
-        document.getElementById(eid + '-chpass').style.display = '';
-        this.style.display = 'none';
-      });
-      document.getElementById(eid + '-btn-cancel-chpass').addEventListener('click', function() {
-        document.getElementById(eid + '-chpass').style.display = 'none';
-        document.getElementById(eid + '-btn-show-chpass').style.display = '';
-      });
       document.getElementById(eid + '-btn-chpass').addEventListener('click', function() {
         changePassphrase(pn, eid);
       });
-      document.getElementById(eid + '-btn-chk-kf').addEventListener('click', function() {
-        checkKeyfileStatus(pn, eid);
-      });
+      checkKeyfileStatus(pn, eid);
     }
   });
 }
@@ -864,81 +852,88 @@ function changePassphrase(poolName, eid) {
 
 function checkKeyfileStatus(poolName, eid) {
   var infoEl = document.getElementById(eid + '-kf-info');
-  infoEl.style.display = '';
   infoEl.innerHTML = '<span class="hint">Checking…</span>';
 
   var rawKey = '/run/pinneos/persist/encryption/' + poolName + '.key';
   var encKey = '/run/pinneos/persist/encryption/' + poolName + '.key.enc';
 
-  var hasRaw = cockpit.spawn(['/usr/bin/test', '-f', rawKey], {superuser: 'try', err: 'message'})
-    .then(function() { return true; }).catch(function() { return false; });
-  var hasEnc = cockpit.spawn(['/usr/bin/test', '-f', encKey], {superuser: 'try', err: 'message'})
-    .then(function() { return true; }).catch(function() { return false; });
-
-  Promise.all([hasRaw, hasEnc]).then(function(results) {
-    var raw = results[0], enc = results[1];
-    var html = '';
-
-    if (raw) {
-      // Best state: auto-unlock at boot enabled
-      html =
+  // Sequential cockpit spawn checks — cockpit chains don't unwrap native Promise.all
+  cockpit.spawn(['/usr/bin/test', '-f', rawKey], {superuser: 'try', err: 'message'})
+    .then(function() {
+      // State 1: Raw key present — auto-unlock enabled
+      infoEl.innerHTML =
         '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center">' +
           '<span>Auto-unlock at boot: <strong>Enabled</strong> — pool unlocks automatically without any login.</span>' +
-          '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Remove</button>' +
+          '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Disable</button>' +
         '</div>';
-      infoEl.innerHTML = html;
       document.getElementById(eid + '-btn-rmkf').addEventListener('click', function() {
         removeKeyfile(poolName, eid);
       });
-    } else if (enc) {
-      // Encrypted keyfile exists — can enable auto-unlock with just passphrase
-      html =
-        '<div class="alert alert-warning" style="margin-bottom:8px">' +
-          'Auto-unlock at boot: <strong>Disabled</strong> — boot requires Cockpit unlock.' +
-        '</div>' +
-        '<div class="form-group" style="margin-bottom:8px">' +
-          '<label>Passphrase</label>' +
-          '<input type="password" id="' + eid + '-kf-pass" autocomplete="current-password">' +
-        '</div>' +
-        '<div style="display:flex;gap:8px">' +
-          '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Enable auto-unlock</button>' +
-          '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Remove keyfile</button>' +
-        '</div>' +
-        '<div id="' + eid + '-kf-alert"></div>';
-      infoEl.innerHTML = html;
-      document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
-        extractKeyfile(poolName, eid);
-      });
-      document.getElementById(eid + '-btn-rmkf').addEventListener('click', function() {
-        removeKeyfile(poolName, eid);
-      });
-    } else {
-      // No keyfile at all — need passphrase + recovery key
-      html =
-        '<div class="alert alert-warning" style="margin-bottom:8px">' +
-          'No keyfile on USB — unlock requires recovery key.' +
-        '</div>' +
-        '<div class="form-group" style="margin-bottom:8px">' +
-          '<label>Passphrase (min 12 chars)</label>' +
-          '<input type="password" id="' + eid + '-kf-pass" autocomplete="new-password">' +
-        '</div>' +
-        '<div class="form-group" style="margin-bottom:8px">' +
-          '<label>Recovery key (64 hex chars)</label>' +
-          '<input type="text" id="' + eid + '-kf-rec" placeholder="a3f7c2…8b91d4" style="font-family:monospace">' +
-        '</div>' +
-        '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Save keyfile to USB</button>' +
-        '<div id="' + eid + '-kf-alert"></div>';
-      infoEl.innerHTML = html;
-      document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
-        saveKeyfile(poolName, eid);
-      });
-    }
-  });
+    })
+    .catch(function() {
+      // No raw key — check for encrypted keyfile
+      cockpit.spawn(['/usr/bin/test', '-f', encKey], {superuser: 'try', err: 'message'})
+        .then(function() {
+          // State 2: Only .key.enc — can re-enable with just passphrase
+          infoEl.innerHTML =
+            '<div class="alert alert-warning" style="margin-bottom:8px">' +
+              'Auto-unlock at boot: <strong>Disabled</strong> — passphrase required at each boot.' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:8px">' +
+              '<label>Passphrase</label>' +
+              '<input type="password" id="' + eid + '-kf-pass" autocomplete="current-password">' +
+            '</div>' +
+            '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Enable auto-unlock</button>' +
+            '<div id="' + eid + '-kf-alert" style="margin-top:8px"></div>' +
+            '<p style="margin:8px 0 0;font-size:12px">' +
+              '<a href="#" id="' + eid + '-lnk-rmall" style="color:#c9190b">Remove all keyfiles from USB</a>' +
+              ' (requires recovery key to re-enable)' +
+            '</p>';
+          document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
+            extractKeyfile(poolName, eid);
+          });
+          document.getElementById(eid + '-lnk-rmall').addEventListener('click', function(e) {
+            e.preventDefault();
+            removeKeyfileAll(poolName, eid);
+          });
+        })
+        .catch(function() {
+          // State 3: No keyfile at all — needs passphrase + recovery key
+          infoEl.innerHTML =
+            '<div class="alert alert-warning" style="margin-bottom:8px">' +
+              'No keyfile on USB — passphrase <em>and</em> recovery key needed to set up auto-unlock.' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:8px">' +
+              '<label>Passphrase (min 12 chars)</label>' +
+              '<input type="password" id="' + eid + '-kf-pass" autocomplete="new-password">' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:8px">' +
+              '<label>Recovery key (64 hex chars)</label>' +
+              '<input type="text" id="' + eid + '-kf-rec" placeholder="a3f7c2…8b91d4" style="font-family:monospace">' +
+            '</div>' +
+            '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Save keyfile to USB</button>' +
+            '<div id="' + eid + '-kf-alert" style="margin-top:8px"></div>';
+          document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
+            saveKeyfile(poolName, eid);
+          });
+        });
+    });
 }
 
 function removeKeyfile(poolName, eid) {
-  if (!window.confirm('Remove keyfile from USB? Auto-unlock will be disabled.')) return;
+  if (!window.confirm('Disable auto-unlock for pool "' + poolName + '"?\n\nThe encrypted keyfile is kept on USB — you can re-enable auto-unlock with just your passphrase.')) return;
   cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'remove-keyfile', poolName],
+      {superuser: 'require', err: 'message'})
+    .then(function() { checkKeyfileStatus(poolName, eid); })
+    .catch(function(err) {
+      document.getElementById(eid + '-kf-info').innerHTML =
+        '<div class="alert alert-danger">' + esc(String(err.message || err)) + '</div>';
+    });
+}
+
+function removeKeyfileAll(poolName, eid) {
+  if (!window.confirm('Remove ALL keyfiles for pool "' + poolName + '" from USB?\n\nYou will need your passphrase AND recovery key to set up auto-unlock again.')) return;
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'remove-keyfile-all', poolName],
       {superuser: 'require', err: 'message'})
     .then(function() { checkKeyfileStatus(poolName, eid); })
     .catch(function(err) {
@@ -1193,22 +1188,27 @@ function findBackupCandidates(bootDisk) {
       if (!hasPinneosA) return;
       diskCandidates.push({ disk: disk, model: (dev.model || 'Unknown').trim(), size: dev.size });
     });
-    // Fetch serial number for each candidate via udevadm (partition UUIDs are identical on cloned USBs)
-    return Promise.all(diskCandidates.map(function(c) {
-      return cockpit.spawn(
-        ['/usr/bin/udevadm', 'info', '--query=property', c.disk],
-        {err: 'message'}
-      ).then(function(info) {
-        var serial = '';
-        info.split('\n').forEach(function(line) {
-          if (line.indexOf('ID_SERIAL_SHORT=') === 0)
-            serial = line.slice('ID_SERIAL_SHORT='.length).trim();
+    // Fetch serial numbers sequentially — cockpit spawn chains don't unwrap native Promise.all
+    var initial = cockpit.spawn(['/bin/true'], {err: 'message'}).then(function() { return []; });
+    return diskCandidates.reduce(function(chain, c) {
+      return chain.then(function(results) {
+        return cockpit.spawn(
+          ['/usr/bin/udevadm', 'info', '--query=property', c.disk],
+          {err: 'message'}
+        ).then(function(info) {
+          var serial = '';
+          info.split('\n').forEach(function(line) {
+            if (line.indexOf('ID_SERIAL_SHORT=') === 0)
+              serial = line.slice('ID_SERIAL_SHORT='.length).trim();
+          });
+          results.push({ disk: c.disk, serial: serial || c.disk, model: c.model, size: c.size });
+          return results;
+        }).catch(function() {
+          results.push({ disk: c.disk, serial: c.disk, model: c.model, size: c.size });
+          return results;
         });
-        return { disk: c.disk, serial: serial || c.disk, model: c.model, size: c.size };
-      }).catch(function() {
-        return { disk: c.disk, serial: c.disk, model: c.model, size: c.size };
       });
-    }));
+    }, initial);
   });
 }
 

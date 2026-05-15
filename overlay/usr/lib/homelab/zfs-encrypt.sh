@@ -29,6 +29,25 @@ PBKDF2_ITER=600000
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+# After unlocking a pool, rebind /var/lib/docker from the apps dataset and restart Docker.
+_rebind_docker() {
+    local poolname="$1"
+    local apps_mp
+    apps_mp=$(zfs get -H -o value mountpoint "${poolname}/apps" 2>/dev/null)
+    [ -n "$apps_mp" ] && [ "$apps_mp" != "none" ] && [ -d "$apps_mp" ] || return 0
+
+    systemctl stop docker docker.socket 2>/dev/null || true
+    # Unmount tmpfs that boot placed at /var/lib/docker (overlay2 on overlayfs workaround)
+    if findmnt -t tmpfs /var/lib/docker >/dev/null 2>&1; then
+        umount /var/lib/docker 2>/dev/null || true
+    fi
+    mkdir -p /var/lib/docker
+    mount --bind "$apps_mp" /var/lib/docker 2>/dev/null || { echo "WARNING: bind-mount failed"; return 0; }
+    systemctl reset-failed docker 2>/dev/null || true
+    systemctl start docker 2>/dev/null || true
+    echo "Docker restarted on ZFS dataset."
+}
+
 _gen_key() {
     local key_path="$1"
     mkdir -p "$KEYS_DIR"
@@ -125,6 +144,7 @@ cmd_unlock() {
     zfs mount -a 2>/dev/null || true
     rm -f "$key_path"
     rm -f /run/pinneos/unlock-needed
+    _rebind_docker "$poolname"
     echo "Pool '$poolname' unlocked."
 }
 
@@ -150,6 +170,7 @@ cmd_unlock_recovery() {
     zfs mount -a 2>/dev/null || true
     rm -f "$key_path"
     rm -f /run/pinneos/unlock-needed
+    _rebind_docker "$poolname"
     echo "Pool '$poolname' unlocked with recovery key."
 }
 
@@ -194,8 +215,18 @@ cmd_extract_keyfile() {
 
 cmd_remove_keyfile() {
     local poolname="$1"
+    # Only remove the raw key — disables auto-unlock at boot.
+    # The passphrase-encrypted .key.enc is kept so auto-unlock can be re-enabled with just the passphrase.
+    rm -f "$PERSIST_DIR/${poolname}.key"
+    zfs set "keylocation=prompt" "$poolname" 2>/dev/null || true
+    echo "Auto-unlock disabled. Passphrase will be required at next boot."
+}
+
+cmd_remove_keyfile_all() {
+    local poolname="$1"
     rm -f "$PERSIST_DIR/${poolname}.key" "$PERSIST_DIR/${poolname}.key.enc"
-    echo "Keyfile removed from USB."
+    zfs set "keylocation=prompt" "$poolname" 2>/dev/null || true
+    echo "All keyfiles removed from USB."
 }
 
 # ── save-keyfile ──────────────────────────────────────────────────────────────
@@ -236,7 +267,8 @@ case "$CMD" in
     unlock-recovery)   cmd_unlock_recovery "$@" ;;
     change-passphrase) cmd_change_passphrase "$@" ;;
     extract-keyfile)   cmd_extract_keyfile "$@" ;;
-    remove-keyfile)    cmd_remove_keyfile "$@" ;;
-    save-keyfile)      cmd_save_keyfile "$@" ;;
+    remove-keyfile)     cmd_remove_keyfile "$@" ;;
+    remove-keyfile-all) cmd_remove_keyfile_all "$@" ;;
+    save-keyfile)       cmd_save_keyfile "$@" ;;
     *) die "Unknown command: $CMD" ;;
 esac
