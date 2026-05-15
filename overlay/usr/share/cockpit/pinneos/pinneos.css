@@ -82,6 +82,11 @@ tr:last-child td { border-bottom: none; }
 }
 .btn-secondary:hover { background: #e8f1f9; }
 
+.btn-danger {
+  background: #c9190b; color: #fff; border-color: #c9190b;
+}
+.btn-danger:hover { background: #a30000; }
+
 .btn-danger-sm {
   background: #fff; color: #c9190b; border: 1px solid #c9190b;
   padding: 3px 10px; font-size: 12px; font-weight: 600;

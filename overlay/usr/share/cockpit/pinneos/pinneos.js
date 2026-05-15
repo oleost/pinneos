@@ -33,13 +33,14 @@ function clearAlert(id) {
 var currentTab = 'setup';
 
 function switchTab(name) {
-  ['setup', 'zfs', 'backup', 'access'].forEach(function(t) {
+  ['setup', 'zfs', 'backup', 'access', 'update'].forEach(function(t) {
     document.getElementById('pane-' + t).style.display = t === name ? '' : 'none';
     document.getElementById('tab-btn-' + t).classList.toggle('active', t === name);
   });
   currentTab = name;
   if (name === 'zfs')    loadZfs();
   if (name === 'access') updateAccessInfo();
+  if (name === 'update') loadUpdateTab();
 }
 
 // ── Setup tab ─────────────────────────────────────────────────────────────────
@@ -1277,12 +1278,205 @@ function syncBackupUsbNow() {
     });
 }
 
+// ── Update tab ────────────────────────────────────────────────────────────────
+
+var _updateLocalFile = null;
+
+function loadUpdateTab() {
+  clearAlert('update-alert');
+  clearLog('update-log');
+  document.getElementById('update-reboot-wrap').style.display = 'none';
+
+  cockpit.spawn(['cat', '/etc/homelab/version'], {err: 'ignore'})
+    .then(function(v) {
+      document.getElementById('update-current-version').textContent = v.trim() || 'unknown';
+    })
+    .catch(function() {
+      document.getElementById('update-current-version').textContent = 'unknown';
+    });
+
+  checkUpdateState();
+}
+
+function checkUpdateState() {
+  var availEl    = document.getElementById('update-available-version');
+  var linkEl     = document.getElementById('update-release-link');
+  var installBtn = document.getElementById('btn-install-github');
+
+  availEl.textContent = 'checking…';
+  availEl.style.color = '';
+
+  cockpit.spawn(['cat', '/run/pinneos/update-available'], {err: 'ignore'})
+    .then(function(v) {
+      v = v.trim();
+      if (v) {
+        availEl.textContent = v;
+        availEl.style.color = '#c9190b';
+        // Derive GitHub web URL from the API URL in config
+        cockpit.spawn(['sh', '-c', '. /etc/homelab/config; echo "$UPDATE_CHECK_URL"'], {err: 'ignore'})
+          .then(function(url) {
+            url = url.trim();
+            var webUrl = url
+              .replace('api.github.com/repos', 'github.com')
+              .replace('/releases/latest', '/releases/tag/' + v);
+            linkEl.href = webUrl;
+            linkEl.style.display = '';
+          })
+          .catch(function() { linkEl.style.display = 'none'; });
+        installBtn.disabled = false;
+      } else {
+        availEl.textContent = 'up to date';
+        availEl.style.color = '#3e8635';
+        linkEl.style.display = 'none';
+        installBtn.disabled = true;
+      }
+    })
+    .catch(function() {
+      availEl.textContent = 'not checked yet';
+      availEl.style.color = '#6a6e73';
+      linkEl.style.display = 'none';
+      installBtn.disabled = true;
+    });
+}
+
+function runUpdateCheck() {
+  var btn = document.getElementById('btn-check-update');
+  btn.disabled = true;
+  clearAlert('update-alert');
+  document.getElementById('update-available-version').textContent = 'checking…';
+  document.getElementById('update-available-version').style.color = '';
+  document.getElementById('update-release-link').style.display = 'none';
+  document.getElementById('btn-install-github').disabled = true;
+
+  cockpit.spawn(['/usr/lib/homelab/update-check.sh'], {superuser: 'try', err: 'message'})
+    .then(function() { checkUpdateState(); })
+    .catch(function(err) {
+      document.getElementById('update-available-version').textContent = 'check failed';
+      showAlert('update-alert', 'danger', 'Update check failed: ' + (err.message || String(err)));
+    })
+    .finally(function() { btn.disabled = false; });
+}
+
+function handleUpdateFileSelect(e) {
+  var file = e.target.files[0];
+  if (!file) {
+    _updateLocalFile = null;
+    document.getElementById('update-file-status').textContent = '';
+    document.getElementById('btn-install-file').disabled = true;
+    return;
+  }
+  _updateLocalFile = file;
+  document.getElementById('update-file-status').textContent =
+    file.name + ' (' + fmtBytes(file.size) + ')';
+  document.getElementById('btn-install-file').disabled = false;
+}
+
+function runUpdateFromFile() {
+  if (!_updateLocalFile) return;
+  var btn = document.getElementById('btn-install-file');
+  btn.disabled = true;
+  document.getElementById('btn-install-github').disabled = true;
+  clearAlert('update-alert');
+  clearLog('update-log');
+  document.getElementById('update-reboot-wrap').style.display = 'none';
+  appendLog('update-log', 'Reading file…\n');
+
+  var ext = _updateLocalFile.name.endsWith('.iso') ? '.iso' : '.img.gz';
+  var tmpPath = '/tmp/pinneos-update-upload' + ext;
+
+  var reader = new FileReader();
+  reader.onprogress = function(ev) {
+    if (ev.lengthComputable) {
+      var pct = Math.round(ev.loaded / ev.total * 100);
+      var el = document.getElementById('update-log');
+      if (el) { el.textContent = 'Reading file… ' + pct + '%\n'; }
+    }
+  };
+  reader.onload = function(ev) {
+    appendLog('update-log', 'Uploading to server…\n');
+    var data = new Uint8Array(ev.target.result);
+    cockpit.file(tmpPath, {binary: true}).replace(data)
+      .then(function() {
+        appendLog('update-log', 'Upload complete. Starting update…\n');
+        var proc = cockpit.spawn(
+          ['/usr/lib/homelab/update.sh', '--file', tmpPath],
+          {superuser: 'try', err: 'message'}
+        );
+        proc.stream(function(chunk) { appendLog('update-log', chunk); });
+        proc.then(function() {
+          appendLog('update-log', '\n✓ Update written to standby slot.\n');
+          showAlert('update-alert', 'success', 'Update installed. Click "Reboot now" to boot into the new slot.');
+          document.getElementById('update-reboot-wrap').style.display = '';
+          btn.disabled = false;
+          cockpit.spawn(['rm', '-f', tmpPath], {superuser: 'try'}).catch(function(){});
+        });
+        proc.catch(function(err) {
+          appendLog('update-log', '\n✗ Error: ' + String(err.message || err));
+          showAlert('update-alert', 'danger', 'Update failed: ' + (err.message || String(err)));
+          btn.disabled = false;
+          document.getElementById('btn-install-github').disabled = false;
+          cockpit.spawn(['rm', '-f', tmpPath], {superuser: 'try'}).catch(function(){});
+        });
+      })
+      .catch(function(err) {
+        appendLog('update-log', '\n✗ Upload failed: ' + String(err.message || err));
+        showAlert('update-alert', 'danger', 'Upload failed: ' + (err.message || String(err)));
+        btn.disabled = false;
+        document.getElementById('btn-install-github').disabled = false;
+      });
+  };
+  reader.onerror = function() {
+    appendLog('update-log', '\n✗ Error reading file.\n');
+    btn.disabled = false;
+    document.getElementById('btn-install-github').disabled = false;
+  };
+  reader.readAsArrayBuffer(_updateLocalFile);
+}
+
+function runUpdateFromGithub() {
+  var btn = document.getElementById('btn-install-github');
+  btn.disabled = true;
+  document.getElementById('btn-install-file').disabled = true;
+  clearAlert('update-alert');
+  clearLog('update-log');
+  document.getElementById('update-reboot-wrap').style.display = 'none';
+
+  var proc = cockpit.spawn(
+    ['/usr/lib/homelab/update.sh'],
+    {superuser: 'try', err: 'message'}
+  );
+  proc.stream(function(chunk) { appendLog('update-log', chunk); });
+  proc.then(function() {
+    appendLog('update-log', '\n✓ Update written to standby slot.\n');
+    showAlert('update-alert', 'success', 'Update installed. Click "Reboot now" to boot into the new slot.');
+    document.getElementById('update-reboot-wrap').style.display = '';
+    btn.disabled = false;
+  });
+  proc.catch(function(err) {
+    appendLog('update-log', '\n✗ Error: ' + String(err.message || err));
+    showAlert('update-alert', 'danger', 'Update failed: ' + (err.message || String(err)));
+    btn.disabled = false;
+    if (_updateLocalFile) document.getElementById('btn-install-file').disabled = false;
+  });
+}
+
 // ── Wire up static controls ───────────────────────────────────────────────────
 
 document.getElementById('tab-btn-setup').addEventListener('click',   function() { switchTab('setup');  });
 document.getElementById('tab-btn-zfs').addEventListener('click',     function() { switchTab('zfs');    });
 document.getElementById('tab-btn-backup').addEventListener('click',  function() { switchTab('backup'); });
 document.getElementById('tab-btn-access').addEventListener('click',  function() { switchTab('access'); });
+document.getElementById('tab-btn-update').addEventListener('click',  function() { switchTab('update'); });
+
+document.getElementById('btn-check-update').addEventListener('click', runUpdateCheck);
+document.getElementById('btn-install-github').addEventListener('click', runUpdateFromGithub);
+document.getElementById('btn-install-file').addEventListener('click', runUpdateFromFile);
+document.getElementById('update-file-input').addEventListener('change', handleUpdateFileSelect);
+document.getElementById('btn-reboot-now').addEventListener('click', function() {
+  if (confirm('Reboot now?')) {
+    cockpit.spawn(['reboot'], {superuser: 'require'}).catch(function(){});
+  }
+});
 
 document.getElementById('btn-run-backup').addEventListener('click', runBackup);
 document.getElementById('btn-list-backups').addEventListener('click', listBackups);
