@@ -100,9 +100,13 @@
     <div class="card">
       <div class="card-header card-header-flex">
         <span>Pools</span>
-        <button class="btn btn-primary" id="btn-show-create-pool">+ Create pool</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="btn-release-mounts" title="Stop Docker and unmount /var/lib/docker so pools can be destroyed">Release mounts</button>
+          <button class="btn btn-primary" id="btn-show-create-pool">+ Create pool</button>
+        </div>
       </div>
       <div class="card-body">
+        <div id="release-mounts-alert"></div>
         <div id="create-pool-form" class="inline-form" style="display:none">
           <div class="form-group">
             <label>Pool name</label>

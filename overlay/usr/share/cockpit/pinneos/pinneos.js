@@ -406,9 +406,54 @@ function confirmDestroyPool(name) {
     .then(function() { loadPools(); loadDisks(); })
     .catch(function(err) {
       document.getElementById('pool-table-wrap').insertAdjacentHTML(
-        'beforeend', '<p class="alert alert-danger" style="margin-top:8px">' + esc(String(err.message || err)) + '</p>'
+        'beforeend',
+        '<p class="alert alert-danger" style="margin-top:8px">' +
+          esc(String(err.message || err)) +
+          ' — Try <strong>Release mounts</strong> first to stop Docker.' +
+        '</p>'
       );
     });
+}
+
+function releaseDockerMounts() {
+  if (!window.confirm(
+    'This will stop Docker (all containers go down) and unmount /var/lib/docker.\n\n' +
+    'Do this only when you want to destroy a pool and start fresh.'
+  )) return;
+
+  var alertEl = document.getElementById('release-mounts-alert');
+  showAlert('release-mounts-alert', 'warning', 'Stopping Docker…');
+  document.getElementById('btn-release-mounts').disabled = true;
+
+  cockpit.spawn(
+    ['/usr/bin/systemctl', 'stop', 'docker', 'docker.socket'],
+    {superuser: 'require', err: 'message'}
+  )
+  .then(function() {
+    showAlert('release-mounts-alert', 'warning', 'Unmounting /var/lib/docker…');
+    return cockpit.spawn(
+      ['/usr/bin/umount', '/var/lib/docker'],
+      {superuser: 'require', err: 'message'}
+    );
+  })
+  .then(function() {
+    showAlert('release-mounts-alert', 'success',
+      'Docker stopped and mounts released. You can now destroy pools. ' +
+      'Reboot or create a new pool to restart Docker.');
+    loadPools();
+  })
+  .catch(function(err) {
+    var msg = String(err.message || err);
+    // umount fails with "not mounted" if Docker was already on tmpfs — that's fine
+    if (msg.indexOf('not mounted') !== -1 || msg.indexOf('no mount point') !== -1) {
+      showAlert('release-mounts-alert', 'success',
+        'Docker stopped. No ZFS bind-mount was active — pools can be destroyed.');
+      loadPools();
+    } else {
+      showAlert('release-mounts-alert', 'danger', msg);
+      document.getElementById('btn-release-mounts').disabled = false;
+    }
+  });
 }
 
 // -- Datasets -----------------------------------------------------------------
@@ -1043,6 +1088,7 @@ document.getElementById('hostname-input').addEventListener('input', updateHostna
 document.getElementById('btn-save-hostname').addEventListener('click', saveHostname);
 document.getElementById('btn-save-password').addEventListener('click', savePassword);
 
+document.getElementById('btn-release-mounts').addEventListener('click', releaseDockerMounts);
 document.getElementById('btn-show-create-pool').addEventListener('click', function() {
   document.getElementById('create-pool-form').style.display = '';
   clearAlert('create-pool-alert');
