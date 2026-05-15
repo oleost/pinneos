@@ -311,14 +311,14 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
 - **First-boot wizard** — `/usr/lib/homelab/wizard.py` (hostname, password, backup USB). Run manually after first login: `pinneos-wizard`
 - **update.sh complete** — downloads `.img.gz` (preferred) or `.iso` (fallback), verifies SHA256, mounts via `losetup -P` (IMG) or loop (ISO), copies kernel/initramfs/squashfs to standby slot, flips grubenv atomically
 - `cockpit-zfs/` skeleton deleted — real plugin lives in `overlay/usr/share/cockpit/pinneos/`
+- **Cockpit Update tab** — GitHub version check, direct download+install, local file upload (.img.gz/.iso), reboot button
+- **A/B update flow tested end-to-end on real hardware** — v0.2.0→v0.2.1 via Cockpit Update tab
 
 ### In progress / TODO
-- First-boot web wizard Phase 2 (ZFS pool creation UI in Cockpit)
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager
 
 ### Known gaps
 - Password doesn't persist across reboots without ZFS pool (works with ZFS system/ dataset)
-- A/B USB update flow not yet tested end-to-end on real hardware
 - ARM/Raspberry Pi support: parked as v2 scope
 
 ### Bootmode history
