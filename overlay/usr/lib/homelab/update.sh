@@ -80,7 +80,7 @@ else
     # 1. Fetch latest release manifest
     log "Checking for updates (channel: $UPDATE_CHANNEL)..."
     manifest=$(curl -sf "$UPDATE_CHECK_URL") || die "Could not reach update server."
-    latest=$(echo "$manifest" | jq -r '.tag_name')
+    latest=$(echo "$manifest" | jq -r '.tag_name' | sed 's/^v//')
     current=$(cat /etc/homelab/version 2>/dev/null || echo "unknown")
 
     if [ "$latest" = "$current" ]; then

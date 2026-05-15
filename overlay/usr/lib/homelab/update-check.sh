@@ -8,7 +8,7 @@ STATE_FILE="/run/pinneos/update-available"
 current=$(cat /etc/homelab/version 2>/dev/null || echo "unknown")
 
 manifest=$(curl -sf --max-time 10 "$UPDATE_CHECK_URL") || exit 0
-latest=$(echo "$manifest" | jq -r '.tag_name // empty')
+latest=$(echo "$manifest" | jq -r '.tag_name // empty' | sed 's/^v//')
 
 [ -n "$latest" ] || exit 0
 

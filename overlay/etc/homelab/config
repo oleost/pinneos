@@ -32,7 +32,7 @@ MDNS_HOSTNAME="pinneos"
 
 # Update channel: stable or edge
 UPDATE_CHANNEL=stable
-UPDATE_CHECK_URL="https://api.github.com/repos/yourorg/pinneos/releases/latest"
+UPDATE_CHECK_URL="https://api.github.com/repos/oleost/pinneos/releases/latest"
 
 # Backup USB: delay in seconds before syncing after a master update (24h)
 BACKUP_USB_SYNC_DELAY=86400
