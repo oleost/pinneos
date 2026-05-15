@@ -156,11 +156,13 @@ function loadPools() {
         renderPoolTable([]);
         updateDatasetPoolSelect([]);
         renderEncryptionCard([]);
+        loadPoolHealth([]);
         return;
       }
 
       var poolNames = pools.map(function(p) { return p.name; });
       updateDatasetPoolSelect(poolNames);
+      loadPoolHealth(poolNames);
 
       cockpit.spawn(
         ['/usr/bin/zfs', 'get', '-H', '-o', 'name,property,value',
@@ -188,12 +190,14 @@ function loadPools() {
       .catch(function() {
         renderPoolTable(pools);
         renderEncryptionCard([]);
+        loadPoolHealth(poolNames);
       });
     })
     .catch(function() {
       renderPoolTable([]);
       updateDatasetPoolSelect([]);
       renderEncryptionCard([]);
+      loadPoolHealth([]);
     });
 }
 
@@ -534,6 +538,132 @@ function confirmDestroyDataset(name) {
       );
     });
 }
+
+// ── Pool health ───────────────────────────────────────────────────────────────
+
+function loadPoolHealth(poolNames) {
+  var card = document.getElementById('card-pool-health');
+  if (!poolNames.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  var wrap = document.getElementById('pool-health-wrap');
+  wrap.innerHTML = '<p class="hint">Loading pool status…</p>';
+
+  var results = {};
+  var pending = poolNames.length;
+
+  function done() {
+    pending--;
+    if (pending === 0) renderPoolHealth(poolNames, results);
+  }
+
+  poolNames.forEach(function(pool) {
+    cockpit.spawn(['/usr/bin/zpool', 'status', '-v', pool], {superuser: 'try', err: 'message'})
+      .then(function(out) { results[pool] = out; done(); })
+      .catch(function()   { results[pool] = '';  done(); });
+  });
+}
+
+function renderPoolHealth(poolNames, results) {
+  document.getElementById('pool-health-wrap').innerHTML =
+    poolNames.map(function(p) { return renderHealthCard(p, parseZpoolStatus(results[p] || '')); }).join('');
+}
+
+function parseZpoolStatus(output) {
+  var res = {state: '', scan: '', errors: '', config: []};
+  var lines = output.split('\n');
+  var inConfig = false, inScan = false, scanBuf = [];
+
+  lines.forEach(function(line) {
+    var m;
+    if ((m = line.match(/^\s*state:\s*(.+)/)))        { res.state = m[1].trim(); inConfig = inScan = false; }
+    else if ((m = line.match(/^\s*scan:\s*(.*)/)))    { scanBuf = [m[1].trim()]; inScan = true; inConfig = false; }
+    else if (inScan && /^\s{6}/.test(line) && line.trim()) { scanBuf.push(line.trim()); }
+    else if (line.match(/^\s*config:/))               { inScan = false; inConfig = true; if (scanBuf.length) res.scan = scanBuf.join(' '); }
+    else if (inConfig && line.trim() && !line.match(/^\s*NAME\s+STATE/)) { res.config.push(line); }
+    else if ((m = line.match(/^\s*errors:\s*(.*)/)))  { res.errors = m[1].trim(); inConfig = inScan = false; }
+    else if (inScan && line.trim())                   { inScan = false; if (scanBuf.length) res.scan = scanBuf.join(' '); }
+  });
+  if (inScan && scanBuf.length) res.scan = scanBuf.join(' ');
+  return res;
+}
+
+function renderHealthCard(poolName, p) {
+  var stBadge = p.state === 'ONLINE'
+    ? '<span class="badge badge-ok">ONLINE</span>'
+    : p.state
+      ? '<span class="badge badge-warn">' + esc(p.state) + '</span>'
+      : '<span class="badge badge-warn">Unknown</span>';
+
+  // Scrub info
+  var scanHtml;
+  if (!p.scan || p.scan === 'none requested') {
+    scanHtml = '<span style="color:#6a6e73">Never run</span>';
+  } else if (p.scan.indexOf('in progress') !== -1 || p.scan.indexOf('resilver') !== -1) {
+    scanHtml = '<span style="color:#795600">⟳ ' + esc(p.scan) + '</span>';
+  } else {
+    var errN = (p.scan.match(/with (\d+) error/) || [])[1];
+    var hasErr = errN && parseInt(errN) > 0;
+    scanHtml = '<span style="color:' + (hasErr ? '#c9190b' : '#3e8635') + '">' +
+      (hasErr ? '⚠ ' : '✓ ') + esc(p.scan) + '</span>';
+  }
+
+  var scrubInProgress = p.scan.indexOf('in progress') !== -1;
+  var hasDataErrors = p.errors && p.errors !== 'No known data errors';
+
+  // Config block — trim trailing empty lines, preserve indentation
+  var configTxt = p.config.map(function(l) { return l; }).join('\n').trimRight();
+
+  return '<div class="enc-section">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+      '<strong>' + esc(poolName) + '</strong>' + stBadge +
+    '</div>' +
+    '<dl class="dl" style="grid-template-columns:120px 1fr;margin-bottom:12px">' +
+      '<dt>Last scrub</dt><dd>' + scanHtml + '</dd>' +
+      '<dt>Data errors</dt><dd>' + (hasDataErrors
+        ? '<span style="color:#c9190b">⚠ ' + esc(p.errors) + '</span>'
+        : '<span style="color:#3e8635">None</span>') + '</dd>' +
+    '</dl>' +
+    (configTxt ? '<pre class="output-pre" style="font-size:12px;margin-bottom:12px">' +
+      'NAME                   STATE     READ WRITE CKSUM\n' + esc(configTxt) + '</pre>' : '') +
+    '<div style="display:flex;gap:8px">' +
+      '<button class="btn btn-secondary" style="font-size:12px" ' +
+        'data-action="' + (scrubInProgress ? 'cancel-scrub' : 'run-scrub') + '" ' +
+        'data-pool="' + esc(poolName) + '">' +
+        (scrubInProgress ? 'Cancel scrub' : 'Run scrub now') +
+      '</button>' +
+      (scrubInProgress ? '<button class="btn btn-secondary" style="font-size:12px" ' +
+        'data-action="refresh-health" data-pool="' + esc(poolName) + '">↻ Refresh progress</button>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+document.getElementById('pool-health-wrap').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  var pool = btn.dataset.pool;
+  if (btn.dataset.action === 'run-scrub') {
+    btn.disabled = true;
+    btn.textContent = 'Starting scrub…';
+    cockpit.spawn(['/usr/bin/zpool', 'scrub', pool], {superuser: 'require', err: 'message'})
+      .then(function() { loadPoolHealth([pool]); })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Run scrub now';
+        alert('Scrub failed: ' + String(err.message || err));
+      });
+  } else if (btn.dataset.action === 'cancel-scrub') {
+    btn.disabled = true;
+    cockpit.spawn(['/usr/bin/zpool', 'scrub', '-s', pool], {superuser: 'require', err: 'message'})
+      .then(function() { loadPoolHealth([pool]); })
+      .catch(function(err) {
+        btn.disabled = false;
+        alert('Cancel failed: ' + String(err.message || err));
+      });
+  } else if (btn.dataset.action === 'refresh-health') {
+    loadPoolHealth([pool]);
+  }
+});
 
 // ── ZFS Encryption ────────────────────────────────────────────────────────────
 
@@ -1104,6 +1234,13 @@ document.getElementById('hostname-input').addEventListener('input', updateHostna
 document.getElementById('btn-save-hostname').addEventListener('click', saveHostname);
 document.getElementById('btn-save-password').addEventListener('click', savePassword);
 
+document.getElementById('btn-refresh-pool-health').addEventListener('click', function() {
+  cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {err: 'message'})
+    .then(function(out) {
+      loadPoolHealth(out.trim().split('\n').filter(Boolean));
+    })
+    .catch(function() { loadPoolHealth([]); });
+});
 document.getElementById('btn-release-mounts').addEventListener('click', releaseDockerMounts);
 document.getElementById('btn-show-create-pool').addEventListener('click', function() {
   document.getElementById('create-pool-form').style.display = '';
