@@ -36,7 +36,19 @@ if [ "$1" = "--file" ]; then
     [ -f "$local_file" ] || die "File not found: $local_file"
 fi
 
-tmpdir=$(mktemp -d)
+# Need ~7 GB free: 1.2 GB download + 5.5 GB decompressed image.
+# Prefer a ZFS storage dataset (TBs of space); fall back to /tmp on RAM systems.
+_find_workbase() {
+    for mp in $(zfs list -H -o mountpoint 2>/dev/null | grep -v '^none$\|^-$'); do
+        free_kb=$(df -k "$mp" 2>/dev/null | awk 'NR==2{print $4}')
+        [ -n "$free_kb" ] && [ "$free_kb" -gt 7340032 ] && echo "$mp" && return 0
+    done
+    free_kb=$(df -k /tmp 2>/dev/null | awk 'NR==2{print $4}')
+    [ -n "$free_kb" ] && [ "$free_kb" -gt 7340032 ] && echo "/tmp" && return 0
+    return 1
+}
+workbase=$(_find_workbase) || die "No location with 7+ GB free. Attach a ZFS pool or use 'Install from file' to upload the image directly."
+tmpdir=$(mktemp -d "${workbase}/.pinneos-update-XXXXXX")
 src_mnt=$(mktemp -d)
 slot_mnt="/mnt/pinneos-slot-target"
 loop_dev=""
@@ -105,8 +117,8 @@ else
         [ -n "$sum_url" ] || die "No .img.gz.sha256 found for $latest."
 
         log "Downloading $latest (img.gz)..."
-        curl -Lfs --http1.1 "$img_url" -o "$tmpdir/new.img.gz"
-        curl -Lfs --http1.1 "$sum_url" -o "$tmpdir/new.img.gz.sha256"
+        curl -LfsS --http1.1 "$img_url" -o "$tmpdir/new.img.gz" || die "Download failed (img.gz)"
+        curl -LfsS --http1.1 "$sum_url" -o "$tmpdir/new.img.gz.sha256" || die "Download failed (sha256)"
 
         log "Verifying checksum..."
         (cd "$tmpdir" && sha256sum -c new.img.gz.sha256) || die "Checksum verification failed."
@@ -125,8 +137,8 @@ else
         [ -n "$sum_url" ] || die "No .iso.sha256 found for $latest."
 
         log "Downloading $latest (iso)..."
-        curl -Lfs --http1.1 "$iso_url" -o "$tmpdir/new.iso"
-        curl -Lfs --http1.1 "$sum_url" -o "$tmpdir/new.iso.sha256"
+        curl -LfsS --http1.1 "$iso_url" -o "$tmpdir/new.iso" || die "Download failed (iso)"
+        curl -LfsS --http1.1 "$sum_url" -o "$tmpdir/new.iso.sha256" || die "Download failed (sha256)"
 
         log "Verifying checksum..."
         (cd "$tmpdir" && sha256sum -c new.iso.sha256) || die "Checksum verification failed."
