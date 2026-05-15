@@ -15,5 +15,5 @@ latest=$(echo "$manifest" | jq -r '.tag_name // empty' | sed 's/^v//')
 if [ "$latest" != "$current" ]; then
     echo "$latest" > "$STATE_FILE"
 else
-    rm -f "$STATE_FILE"
+    echo "up-to-date" > "$STATE_FILE"
 fi

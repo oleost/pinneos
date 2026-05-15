@@ -1309,10 +1309,14 @@ function checkUpdateState() {
   cockpit.spawn(['cat', '/run/pinneos/update-available'], {err: 'ignore'})
     .then(function(v) {
       v = v.trim();
-      if (v) {
+      if (v === 'up-to-date') {
+        availEl.textContent = 'up to date';
+        availEl.style.color = '#3e8635';
+        linkEl.style.display = 'none';
+        installBtn.disabled = true;
+      } else if (v) {
         availEl.textContent = v;
         availEl.style.color = '#c9190b';
-        // Derive GitHub web URL from the API URL in config
         cockpit.spawn(['sh', '-c', '. /etc/homelab/config; echo "$UPDATE_CHECK_URL"'], {err: 'ignore'})
           .then(function(url) {
             url = url.trim();
@@ -1325,8 +1329,8 @@ function checkUpdateState() {
           .catch(function() { linkEl.style.display = 'none'; });
         installBtn.disabled = false;
       } else {
-        availEl.textContent = 'up to date';
-        availEl.style.color = '#3e8635';
+        availEl.textContent = 'not checked yet';
+        availEl.style.color = '#6a6e73';
         linkEl.style.display = 'none';
         installBtn.disabled = true;
       }
