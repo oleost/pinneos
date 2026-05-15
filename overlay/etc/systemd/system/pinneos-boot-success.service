@@ -1,0 +1,13 @@
+[Unit]
+Description=PinneOS boot success — reset GRUB boot_tries counter
+# Must run after the persist partition is mounted
+After=run-pinneos-persist.mount local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/homelab/boot-success.sh
+
+[Install]
+WantedBy=multi-user.target

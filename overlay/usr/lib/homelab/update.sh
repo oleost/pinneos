@@ -13,20 +13,86 @@ set -e
 . /etc/homelab/config
 
 PERSIST_MOUNT="/run/pinneos/persist"
-GRUBENV="$PERSIST_MOUNT/grubenv"
 
 log()  { logger -t pinneos-update "$*"; echo "$*"; }
 die()  { log "ERROR: $*"; exit 1; }
 
-current_slot() { grub-editenv "$GRUBENV" list | grep boot_slot | cut -d= -f2; }
-other_slot()   { [ "$(current_slot)" = "A" ] && echo B || echo A; }
+# Find the grubenv on the boot USB by tracing the running slot's label back to
+# its parent disk, then finding that disk's PINNEOS_PERSIST partition.
+# Falls back to the mounted persist partition if detection fails.
+_find_grubenv() {
+    local boot_label boot_part boot_disk persist_part
+    boot_label=$(grep -o 'archisolabel=[^ ]*' /proc/cmdline 2>/dev/null | cut -d= -f2)
+    if [ -n "$boot_label" ]; then
+        boot_part=$(findfs "LABEL=$boot_label" 2>/dev/null)
+        if [ -n "$boot_part" ]; then
+            boot_disk=$(lsblk -no PKNAME "$boot_part" 2>/dev/null | head -1)
+            if [ -n "$boot_disk" ]; then
+                persist_part=$(lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
+                    | awk '$2=="PINNEOS_PERSIST"{print "/dev/"$1}' | head -1)
+                if [ -n "$persist_part" ]; then
+                    log "Boot USB persist: $persist_part (disk: /dev/$boot_disk)"
+                    echo "$persist_part"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+    log "Warning: could not detect boot USB — falling back to mounted persist partition"
+    echo ""
+    return 0
+}
+
+_boot_persist_mnt=""
+_setup_grubenv() {
+    local persist_dev
+    persist_dev=$(_find_grubenv)
+    if [ -n "$persist_dev" ] && [ "$persist_dev" != "$(findfs LABEL=PINNEOS_PERSIST 2>/dev/null | head -1)" ]; then
+        _boot_persist_mnt=$(mktemp -d)
+        mount "$persist_dev" "$_boot_persist_mnt" 2>/dev/null || _boot_persist_mnt=""
+    fi
+    if [ -n "$_boot_persist_mnt" ]; then
+        GRUBENV="$_boot_persist_mnt/grubenv"
+    else
+        GRUBENV="$PERSIST_MOUNT/grubenv"
+    fi
+}
+_teardown_grubenv() {
+    [ -n "$_boot_persist_mnt" ] && umount "$_boot_persist_mnt" 2>/dev/null; rmdir "$_boot_persist_mnt" 2>/dev/null || true
+}
+
+current_slot() { grub-editenv "$GRUBENV" list 2>/dev/null | grep boot_slot | cut -d= -f2; }
+other_slot()   {
+    local s; s=$(current_slot)
+    # Fall back to cmdline if grubenv unreadable
+    [ -z "$s" ] && s=$(grep -o 'pinneos\.slot=[AB]' /proc/cmdline | cut -d= -f2)
+    [ "$s" = "A" ] && echo B || echo A
+}
 
 slot_dev() {
-    case "$1" in
-        A) echo "$(findfs LABEL=PINNEOS_A)" ;;
-        B) echo "$(findfs LABEL=PINNEOS_B)" ;;
-    esac
+    local disk
+    # Prefer same disk as boot USB to avoid ambiguity with backup USB
+    local boot_label boot_part boot_disk
+    boot_label=$(grep -o 'archisolabel=[^ ]*' /proc/cmdline 2>/dev/null | cut -d= -f2)
+    boot_part=$(findfs "LABEL=$boot_label" 2>/dev/null)
+    boot_disk=$(lsblk -no PKNAME "$boot_part" 2>/dev/null | head -1)
+    if [ -n "$boot_disk" ]; then
+        case "$1" in
+            A) lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
+                   | awk '$2=="PINNEOS_A"{print "/dev/"$1}' | head -1 ;;
+            B) lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
+                   | awk '$2=="PINNEOS_B"{print "/dev/"$1}' | head -1 ;;
+        esac
+    else
+        case "$1" in
+            A) findfs LABEL=PINNEOS_A ;;
+            B) findfs LABEL=PINNEOS_B ;;
+        esac
+    fi
 }
+
+# Resolve the correct grubenv path on the boot USB
+_setup_grubenv
 
 # Parse arguments
 local_file=""
@@ -59,6 +125,7 @@ cleanup() {
     umount "$slot_mnt" 2>/dev/null || true
     [ -n "$loop_dev" ] && losetup -d "$loop_dev" 2>/dev/null || true
     rm -rf "$tmpdir" "$src_mnt"
+    _teardown_grubenv
 }
 trap cleanup EXIT
 
