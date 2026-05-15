@@ -85,9 +85,14 @@
           If you forget your passphrase, this key is the only way to recover your data.
           Store it outside this server (password manager, safe).
         </p>
-        <div id="recovery-key-hex" class="output-pre" style="font-size:13px;word-break:break-all;margin-bottom:12px">—</div>
-        <button class="btn btn-secondary" id="btn-download-recovery-key" style="margin-bottom:16px">↓ Download recovery-key.txt</button>
-        <p class="hint" style="color:#c9190b;margin-bottom:16px">This dialog cannot be reopened. Download or copy the key before closing.</p>
+        <textarea id="recovery-key-hex" readonly
+          style="width:100%;font-family:monospace;font-size:13px;padding:10px;border:1px solid #d2d2d2;border-radius:4px;resize:none;height:64px;margin-bottom:10px;background:#f8f8f8"></textarea>
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn btn-primary" id="btn-copy-recovery-key">Copy to clipboard</button>
+          <button class="btn btn-secondary" id="btn-download-recovery-key">↓ Download .txt</button>
+        </div>
+        <div id="recovery-key-copy-alert" style="margin-bottom:12px"></div>
+        <p class="hint" style="color:#c9190b;margin-bottom:16px">This dialog cannot be reopened. Copy or download the key before closing.</p>
         <button class="btn btn-primary" id="btn-close-recovery-modal">I have saved the recovery key</button>
       </div>
     </div>

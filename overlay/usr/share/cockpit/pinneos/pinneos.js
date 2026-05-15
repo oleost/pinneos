@@ -808,20 +808,36 @@ function showRecoveryKeyModal(poolName, hex) {
   if (!hex || !/^[0-9a-f]{64}$/.test(hex)) return;
   _recoveryPoolName = poolName;
   _recoveryHex = hex;
-  document.getElementById('recovery-key-hex').textContent = hex;
+  document.getElementById('recovery-key-hex').value = hex;
+  document.getElementById('recovery-key-copy-alert').textContent = '';
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 
+function copyRecoveryKey() {
+  var ta = document.getElementById('recovery-key-hex');
+  ta.select();
+  ta.setSelectionRange(0, 99999);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch(e) {}
+  var alertEl = document.getElementById('recovery-key-copy-alert');
+  if (ok) {
+    alertEl.className = 'alert alert-success';
+    alertEl.textContent = 'Copied to clipboard.';
+  } else {
+    alertEl.className = 'alert alert-warning';
+    alertEl.textContent = 'Auto-copy failed — select the key above and press Ctrl+C.';
+  }
+}
+
 function downloadRecoveryKey() {
-  var blob = new Blob([_recoveryHex + '\n'], {type: 'text/plain'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href     = url;
+  // data: URI works without HTTPS and in Cockpit iframes
+  var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(_recoveryHex + '\n');
+  var a = document.createElement('a');
+  a.href = uri;
   a.download = 'recovery-key-' + _recoveryPoolName + '.txt';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // ── Event delegation for dynamic table buttons ────────────────────────────────
@@ -1103,6 +1119,7 @@ document.getElementById('encrypt-pool').addEventListener('change', function() {
   document.getElementById('encrypt-fields').style.display = this.checked ? '' : 'none';
 });
 
+document.getElementById('btn-copy-recovery-key').addEventListener('click', copyRecoveryKey);
 document.getElementById('btn-download-recovery-key').addEventListener('click', downloadRecoveryKey);
 document.getElementById('btn-close-recovery-modal').addEventListener('click', function() {
   document.getElementById('modal-overlay').style.display = 'none';
