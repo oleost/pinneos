@@ -867,43 +867,77 @@ function checkKeyfileStatus(poolName, eid) {
   infoEl.style.display = '';
   infoEl.innerHTML = '<span class="hint">Checking…</span>';
 
-  var kfPath = '/run/pinneos/persist/encryption/' + poolName + '.key.enc';
-  cockpit.spawn(['/usr/bin/test', '-f', kfPath], {superuser: 'try', err: 'message'})
-    .then(function() {
-      infoEl.innerHTML =
+  var rawKey = '/run/pinneos/persist/encryption/' + poolName + '.key';
+  var encKey = '/run/pinneos/persist/encryption/' + poolName + '.key.enc';
+
+  var hasRaw = cockpit.spawn(['/usr/bin/test', '-f', rawKey], {superuser: 'try', err: 'message'})
+    .then(function() { return true; }).catch(function() { return false; });
+  var hasEnc = cockpit.spawn(['/usr/bin/test', '-f', encKey], {superuser: 'try', err: 'message'})
+    .then(function() { return true; }).catch(function() { return false; });
+
+  Promise.all([hasRaw, hasEnc]).then(function(results) {
+    var raw = results[0], enc = results[1];
+    var html = '';
+
+    if (raw) {
+      // Best state: auto-unlock at boot enabled
+      html =
         '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center">' +
-          '<span>Keyfile on USB: <strong>Yes</strong> — boot-time unlock enabled.</span>' +
+          '<span>Auto-unlock at boot: <strong>Enabled</strong> — pool unlocks automatically without any login.</span>' +
           '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Remove</button>' +
         '</div>';
+      infoEl.innerHTML = html;
       document.getElementById(eid + '-btn-rmkf').addEventListener('click', function() {
         removeKeyfile(poolName, eid);
       });
-    })
-    .catch(function() {
-      infoEl.innerHTML =
+    } else if (enc) {
+      // Encrypted keyfile exists — can enable auto-unlock with just passphrase
+      html =
         '<div class="alert alert-warning" style="margin-bottom:8px">' +
-          'Keyfile on USB: <strong>No</strong> — unlock requires recovery key.' +
+          'Auto-unlock at boot: <strong>Disabled</strong> — boot requires Cockpit unlock.' +
         '</div>' +
-        '<div id="' + eid + '-kf-add-form">' +
-          '<div class="form-group" style="margin-bottom:8px">' +
-            '<label>New passphrase for keyfile (min 12 chars)</label>' +
-            '<input type="password" id="' + eid + '-kf-pass">' +
-          '</div>' +
-          '<div class="form-group" style="margin-bottom:8px">' +
-            '<label>Recovery key (64 hex chars)</label>' +
-            '<input type="text" id="' + eid + '-kf-rec" placeholder="a3f7c2…8b91d4" style="font-family:monospace">' +
-          '</div>' +
-          '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Save keyfile to USB</button>' +
-          '<div id="' + eid + '-kf-alert"></div>' +
-        '</div>';
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Passphrase</label>' +
+          '<input type="password" id="' + eid + '-kf-pass" autocomplete="current-password">' +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Enable auto-unlock</button>' +
+          '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Remove keyfile</button>' +
+        '</div>' +
+        '<div id="' + eid + '-kf-alert"></div>';
+      infoEl.innerHTML = html;
+      document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
+        extractKeyfile(poolName, eid);
+      });
+      document.getElementById(eid + '-btn-rmkf').addEventListener('click', function() {
+        removeKeyfile(poolName, eid);
+      });
+    } else {
+      // No keyfile at all — need passphrase + recovery key
+      html =
+        '<div class="alert alert-warning" style="margin-bottom:8px">' +
+          'No keyfile on USB — unlock requires recovery key.' +
+        '</div>' +
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Passphrase (min 12 chars)</label>' +
+          '<input type="password" id="' + eid + '-kf-pass" autocomplete="new-password">' +
+        '</div>' +
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Recovery key (64 hex chars)</label>' +
+          '<input type="text" id="' + eid + '-kf-rec" placeholder="a3f7c2…8b91d4" style="font-family:monospace">' +
+        '</div>' +
+        '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Save keyfile to USB</button>' +
+        '<div id="' + eid + '-kf-alert"></div>';
+      infoEl.innerHTML = html;
       document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
         saveKeyfile(poolName, eid);
       });
-    });
+    }
+  });
 }
 
 function removeKeyfile(poolName, eid) {
-  if (!window.confirm('Remove keyfile from USB? Boot-time unlock will be disabled.')) return;
+  if (!window.confirm('Remove keyfile from USB? Auto-unlock will be disabled.')) return;
   cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'remove-keyfile', poolName],
       {superuser: 'require', err: 'message'})
     .then(function() { checkKeyfileStatus(poolName, eid); })
@@ -913,14 +947,24 @@ function removeKeyfile(poolName, eid) {
     });
 }
 
+function extractKeyfile(poolName, eid) {
+  var pass = (document.getElementById(eid + '-kf-pass') || {}).value || '';
+  var alertId = eid + '-kf-alert';
+  if (pass.length < 12) { showAlert(alertId, 'warning', 'Passphrase must be at least 12 characters.'); return; }
+  showAlert(alertId, 'warning', 'Enabling auto-unlock…');
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'extract-keyfile', poolName],
+      {superuser: 'require', err: 'message'})
+    .input(pass + '\n')
+    .then(function() { checkKeyfileStatus(poolName, eid); })
+    .catch(function(err) { showAlert(alertId, 'danger', String(err.message || err)); });
+}
+
 function saveKeyfile(poolName, eid) {
   var pass = (document.getElementById(eid + '-kf-pass') || {}).value || '';
   var rec  = ((document.getElementById(eid + '-kf-rec') || {}).value || '').trim().toLowerCase();
   var alertId = eid + '-kf-alert';
-
   if (pass.length < 12) { showAlert(alertId, 'warning', 'Passphrase must be at least 12 characters.'); return; }
   if (!/^[0-9a-f]{64}$/.test(rec)) { showAlert(alertId, 'warning', 'Invalid recovery key format.'); return; }
-
   showAlert(alertId, 'warning', 'Saving keyfile…');
   cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'save-keyfile', poolName],
       {superuser: 'require', err: 'message'})

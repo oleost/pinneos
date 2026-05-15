@@ -93,7 +93,16 @@ cmd_create_pool() {
 
     zfs set pinneos:managed=yes "$poolname"
 
-    [ "$save_to_usb" = "true" ] && _encrypt_to_persist "$poolname" "$passphrase"
+    if [ "$save_to_usb" = "true" ]; then
+        mkdir -p "$PERSIST_DIR"
+        # Raw key for auto-boot unlock — zfs-import.sh loads this directly
+        cp "$key_path" "$PERSIST_DIR/${poolname}.key"
+        chmod 600 "$PERSIST_DIR/${poolname}.key"
+        # Point pool's keylocation to the persist file
+        zfs set "keylocation=file://${PERSIST_DIR}/${poolname}.key" "$poolname"
+        # Passphrase-encrypted copy for Cockpit manual unlock and passphrase change
+        _encrypt_to_persist "$poolname" "$passphrase"
+    fi
 
     echo "RECOVERY_KEY:${recovery_hex}"
     rm -f "$key_path"
@@ -161,11 +170,31 @@ cmd_change_passphrase() {
     echo "Passphrase changed."
 }
 
+# ── extract-keyfile ───────────────────────────────────────────────────────────
+# Decrypt the passphrase-encrypted key and save the raw key for auto-boot.
+# Use this to enable auto-unlock on existing pools created without the raw key.
+
+cmd_extract_keyfile() {
+    local poolname="$1"
+    local passphrase
+    IFS= read -r passphrase
+
+    local key_path="$KEYS_DIR/${poolname}.key"
+    _decrypt_from_persist "$poolname" "$passphrase"
+
+    mkdir -p "$PERSIST_DIR"
+    cp "$key_path" "$PERSIST_DIR/${poolname}.key"
+    chmod 600 "$PERSIST_DIR/${poolname}.key"
+    zfs set "keylocation=file://${PERSIST_DIR}/${poolname}.key" "$poolname" 2>/dev/null || true
+    rm -f "$key_path"
+    echo "Auto-unlock keyfile saved to USB."
+}
+
 # ── remove-keyfile ────────────────────────────────────────────────────────────
 
 cmd_remove_keyfile() {
     local poolname="$1"
-    rm -f "$PERSIST_DIR/${poolname}.key.enc"
+    rm -f "$PERSIST_DIR/${poolname}.key" "$PERSIST_DIR/${poolname}.key.enc"
     echo "Keyfile removed from USB."
 }
 
@@ -185,6 +214,11 @@ cmd_save_keyfile() {
     printf '%s' "$recovery_hex" > "$key_path"
     chmod 600 "$key_path"
 
+    # Raw key for auto-boot unlock
+    cp "$key_path" "$PERSIST_DIR/${poolname}.key"
+    chmod 600 "$PERSIST_DIR/${poolname}.key"
+    zfs set "keylocation=file://${PERSIST_DIR}/${poolname}.key" "$poolname" 2>/dev/null || true
+    # Passphrase-encrypted copy for Cockpit manual unlock
     _encrypt_to_persist "$poolname" "$passphrase"
     rm -f "$key_path"
     echo "Keyfile saved to USB."
@@ -201,6 +235,7 @@ case "$CMD" in
     unlock)            cmd_unlock "$@" ;;
     unlock-recovery)   cmd_unlock_recovery "$@" ;;
     change-passphrase) cmd_change_passphrase "$@" ;;
+    extract-keyfile)   cmd_extract_keyfile "$@" ;;
     remove-keyfile)    cmd_remove_keyfile "$@" ;;
     save-keyfile)      cmd_save_keyfile "$@" ;;
     *) die "Unknown command: $CMD" ;;

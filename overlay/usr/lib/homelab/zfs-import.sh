@@ -23,13 +23,27 @@ zfs_mounted=0
 for pool in $(zpool list -H -o name 2>/dev/null); do
     managed=$(zfs get -H -o value "$ZFS_MANAGED_PROPERTY" "$pool" 2>/dev/null)
     if [ "$managed" = "yes" ]; then
-        # Check for native encryption — if enabled, defer mounting until user unlocks via Cockpit
+        # Check for native encryption
         enc=$(zfs get -H -o value encryption "$pool" 2>/dev/null)
         if [ "$enc" != "off" ] && [ "$enc" != "-" ]; then
-            log "Pool $pool is encrypted — deferring mount, waiting for Cockpit unlock"
-            mkdir -p /run/pinneos
-            printf '%s' "$pool" > /run/pinneos/unlock-needed
-            break
+            keyfile="${PERSIST_MOUNT}/encryption/${pool}.key"
+            if [ -f "$keyfile" ]; then
+                log "Auto-unlocking encrypted pool $pool from USB keyfile..."
+                if zfs load-key -L "file://${keyfile}" "$pool" 2>/dev/null; then
+                    log "Pool $pool unlocked automatically"
+                    # Fall through to mount below
+                else
+                    log "Auto-unlock failed — deferring to Cockpit"
+                    mkdir -p /run/pinneos
+                    printf '%s' "$pool" > /run/pinneos/unlock-needed
+                    break
+                fi
+            else
+                log "Pool $pool is encrypted — deferring mount, waiting for Cockpit unlock"
+                mkdir -p /run/pinneos
+                printf '%s' "$pool" > /run/pinneos/unlock-needed
+                break
+            fi
         fi
 
         log "Mounting datasets on pool: $pool"
@@ -39,8 +53,11 @@ for pool in $(zpool list -H -o name 2>/dev/null); do
         apps_mp=$(zfs get -H -o value mountpoint "$pool/$DATASET_APPS" 2>/dev/null)
         if [ -n "$apps_mp" ] && [ "$apps_mp" != "none" ]; then
             mkdir -p "$DOCKER_DATA_DIR"
-            mount --bind "$apps_mp" "$DOCKER_DATA_DIR"
-            zfs_mounted=1
+            if mount --bind "$apps_mp" "$DOCKER_DATA_DIR" 2>/dev/null; then
+                zfs_mounted=1
+            else
+                log "Bind-mount of $apps_mp failed — falling back to tmpfs"
+            fi
         fi
 
         # Set storage dataset ownership for app containers (PUID=1000 / PGID=1000).
