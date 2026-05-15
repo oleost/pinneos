@@ -138,6 +138,7 @@ function checkZfsPool() {
 function loadZfs() {
   loadPools();
   loadDisks();
+  checkUnlockStatus();
 }
 
 // -- Pools --------------------------------------------------------------------
@@ -147,14 +148,52 @@ function loadPools() {
     .then(function(output) {
       var pools = output.trim().split('\n').filter(Boolean).map(function(line) {
         var f = line.split('\t');
-        return {name: f[0], size: f[1], alloc: f[2], free: f[3], health: f[4]};
+        return {name: f[0], size: f[1], alloc: f[2], free: f[3], health: f[4],
+                encryption: 'off', keystatus: '-'};
       });
-      renderPoolTable(pools);
-      updateDatasetPoolSelect(pools.map(function(p) { return p.name; }));
+
+      if (!pools.length) {
+        renderPoolTable([]);
+        updateDatasetPoolSelect([]);
+        renderEncryptionCard([]);
+        return;
+      }
+
+      var poolNames = pools.map(function(p) { return p.name; });
+      updateDatasetPoolSelect(poolNames);
+
+      cockpit.spawn(
+        ['/usr/bin/zfs', 'get', '-H', '-o', 'name,property,value',
+          'encryption,keystatus'].concat(poolNames),
+        {err: 'message'}
+      )
+      .then(function(encOut) {
+        var encMap = {};
+        encOut.trim().split('\n').filter(Boolean).forEach(function(line) {
+          var p = line.split('\t');
+          if (!encMap[p[0]]) encMap[p[0]] = {};
+          encMap[p[0]][p[1]] = p[2];
+        });
+        pools.forEach(function(p) {
+          if (encMap[p.name]) {
+            p.encryption = encMap[p.name].encryption || 'off';
+            p.keystatus  = encMap[p.name].keystatus  || '-';
+          }
+        });
+        renderPoolTable(pools);
+        renderEncryptionCard(pools.filter(function(p) {
+          return p.encryption !== 'off' && p.encryption !== '-';
+        }));
+      })
+      .catch(function() {
+        renderPoolTable(pools);
+        renderEncryptionCard([]);
+      });
     })
     .catch(function() {
       renderPoolTable([]);
       updateDatasetPoolSelect([]);
+      renderEncryptionCard([]);
     });
 }
 
@@ -165,16 +204,23 @@ function renderPoolTable(pools) {
     return;
   }
   var html = '<table><thead><tr>' +
-    '<th>Name</th><th>Size</th><th>Used</th><th>Free</th><th>Health</th><th></th>' +
+    '<th>Name</th><th>Size</th><th>Used</th><th>Free</th><th>Health</th><th>Encryption</th><th></th>' +
     '</tr></thead><tbody>';
   pools.forEach(function(p) {
-    var hc = p.health === 'ONLINE' ? 'badge-ok' : 'badge-warn';
+    var hc  = p.health === 'ONLINE' ? 'badge-ok' : 'badge-warn';
+    var enc = '<span style="color:#6a6e73;font-size:12px">Off</span>';
+    if (p.encryption && p.encryption !== 'off' && p.encryption !== '-') {
+      enc = p.keystatus === 'available'
+        ? '<span class="badge badge-ok">Unlocked</span>'
+        : '<span class="badge badge-lock">Locked</span>';
+    }
     html += '<tr>' +
       '<td><strong>' + esc(p.name) + '</strong></td>' +
       '<td>' + fmtBytes(p.size) + '</td>' +
       '<td>' + fmtBytes(p.alloc) + '</td>' +
       '<td>' + fmtBytes(p.free) + '</td>' +
       '<td><span class="badge ' + hc + '">' + esc(p.health) + '</span></td>' +
+      '<td>' + enc + '</td>' +
       '<td><button class="btn btn-danger-sm" data-action="destroy-pool" data-name="' + esc(p.name) + '">Destroy</button></td>' +
       '</tr>';
   });
@@ -269,6 +315,22 @@ function createPool() {
     return;
   }
 
+  if (document.getElementById('encrypt-pool').checked) {
+    var pass1 = document.getElementById('encrypt-pass1').value;
+    var pass2 = document.getElementById('encrypt-pass2').value;
+    if (pass1.length < 12) {
+      showAlert('create-pool-alert', 'danger', 'Passphrase must be at least 12 characters.');
+      return;
+    }
+    if (pass1 !== pass2) {
+      showAlert('create-pool-alert', 'danger', 'Passphrases do not match.');
+      return;
+    }
+    var saveToUsb = document.getElementById('encrypt-save-usb').checked ? 'true' : 'false';
+    createEncryptedPool(name, topo, disks, pass1, saveToUsb);
+    return;
+  }
+
   var cmd = ['/usr/bin/zpool', 'create', '-f', name];
   if (topo !== 'stripe') cmd.push(topo);
   cmd = cmd.concat(disks);
@@ -284,6 +346,37 @@ function createPool() {
       document.getElementById('create-pool-form').style.display = 'none';
       loadPools();
       loadDisks();
+    })
+    .catch(function(err) {
+      showAlert('create-pool-alert', 'danger', String(err.message || err));
+    });
+}
+
+function createEncryptedPool(name, topo, disks, passphrase, saveToUsb) {
+  showAlert('create-pool-alert', 'warning', 'Creating encrypted pool — this may take a moment…');
+
+  var args = ['/usr/lib/homelab/zfs-encrypt.sh', 'create-pool', name];
+  if (topo !== 'stripe') args.push(topo);
+  args = args.concat(disks);
+
+  cockpit.spawn(args, {superuser: 'require', err: 'message'})
+    .input(passphrase + '\n' + saveToUsb + '\n')
+    .then(function(output) {
+      var m = output.match(/RECOVERY_KEY:([0-9a-f]{64})/);
+      var recoveryHex = m ? m[1] : null;
+      return initPool(name).then(function() { return recoveryHex; });
+    })
+    .then(function(recoveryHex) {
+      document.getElementById('pool-name').value = '';
+      document.getElementById('encrypt-pass1').value = '';
+      document.getElementById('encrypt-pass2').value = '';
+      document.getElementById('encrypt-pool').checked = false;
+      document.getElementById('encrypt-fields').style.display = 'none';
+      document.getElementById('create-pool-form').style.display = 'none';
+      clearAlert('create-pool-alert');
+      loadPools();
+      loadDisks();
+      if (recoveryHex) showRecoveryKeyModal(name, recoveryHex);
     })
     .catch(function(err) {
       showAlert('create-pool-alert', 'danger', String(err.message || err));
@@ -395,6 +488,294 @@ function confirmDestroyDataset(name) {
         'beforeend', '<p class="alert alert-danger" style="margin-top:8px">' + esc(String(err.message || err)) + '</p>'
       );
     });
+}
+
+// ── ZFS Encryption ────────────────────────────────────────────────────────────
+
+function checkUnlockStatus() {
+  cockpit.spawn(['/usr/bin/cat', '/run/pinneos/unlock-needed'], {err: 'message'})
+    .then(function(content) {
+      var poolName = (content || '').trim();
+      if (poolName) renderUnlockBanner(poolName);
+      else hideUnlockBanner();
+    })
+    .catch(function() { hideUnlockBanner(); });
+}
+
+function renderUnlockBanner(poolName) {
+  var el = document.getElementById('unlock-banner');
+  el.innerHTML =
+    '<div class="alert alert-warning">' +
+      '<p style="margin-bottom:10px"><strong>Pool "' + esc(poolName) + '" is encrypted and locked.</strong><br>' +
+        'Enter the passphrase to unlock and start Docker containers.</p>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">' +
+        '<input type="password" id="unlock-passphrase" placeholder="Passphrase">' +
+        '<button class="btn btn-primary" id="btn-do-unlock">Unlock</button>' +
+        '<button class="btn btn-secondary" style="font-size:12px" id="btn-show-recovery-unlock">Use recovery key</button>' +
+      '</div>' +
+      '<div id="unlock-alert"></div>' +
+      '<div id="unlock-recovery-section" style="display:none;margin-top:10px">' +
+        '<div class="form-group" style="margin-bottom:8px">' +
+          '<label>Recovery key (64 lowercase hex characters)</label>' +
+          '<input type="text" id="unlock-recovery-input" placeholder="a3f7c2…8b91d4" style="max-width:440px;font-family:monospace">' +
+        '</div>' +
+        '<button class="btn btn-primary" id="btn-do-unlock-recovery">Unlock with recovery key</button>' +
+      '</div>' +
+    '</div>';
+  el.style.display = '';
+
+  document.getElementById('btn-do-unlock').addEventListener('click', function() { unlockPool(poolName); });
+  document.getElementById('btn-show-recovery-unlock').addEventListener('click', function() {
+    document.getElementById('unlock-recovery-section').style.display = '';
+  });
+  document.getElementById('btn-do-unlock-recovery').addEventListener('click', function() {
+    unlockPoolRecovery(poolName);
+  });
+}
+
+function hideUnlockBanner() {
+  var el = document.getElementById('unlock-banner');
+  el.style.display = 'none';
+  el.innerHTML = '';
+}
+
+function unlockPool(poolName) {
+  var pass = document.getElementById('unlock-passphrase').value;
+  if (!pass) return;
+  var alertEl = document.getElementById('unlock-alert');
+  alertEl.innerHTML = '<span class="hint">Unlocking…</span>';
+  document.getElementById('btn-do-unlock').disabled = true;
+
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'unlock', poolName],
+      {superuser: 'require', err: 'message'})
+    .input(pass + '\n')
+    .then(function() {
+      alertEl.innerHTML = '<span style="color:#1e4f18">Unlocked — restarting Docker…</span>';
+      document.getElementById('unlock-passphrase').value = '';
+      return cockpit.spawn(['/usr/bin/systemctl', 'restart', 'docker'],
+          {superuser: 'require', err: 'message'});
+    })
+    .then(function() { hideUnlockBanner(); loadPools(); })
+    .catch(function(err) {
+      alertEl.innerHTML = '<span style="color:#c9190b">✗ ' + esc(String(err.message || err)) + '</span>';
+      document.getElementById('btn-do-unlock').disabled = false;
+    });
+}
+
+function unlockPoolRecovery(poolName) {
+  var hex = (document.getElementById('unlock-recovery-input').value || '').trim().toLowerCase();
+  var alertEl = document.getElementById('unlock-alert');
+  if (!/^[0-9a-f]{64}$/.test(hex)) {
+    alertEl.innerHTML = '<span style="color:#c9190b">Invalid recovery key — must be 64 lowercase hex characters.</span>';
+    return;
+  }
+  alertEl.innerHTML = '<span class="hint">Unlocking…</span>';
+  document.getElementById('btn-do-unlock-recovery').disabled = true;
+
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'unlock-recovery', poolName],
+      {superuser: 'require', err: 'message'})
+    .input(hex + '\n')
+    .then(function() {
+      alertEl.innerHTML = '<span style="color:#1e4f18">Unlocked — restarting Docker…</span>';
+      return cockpit.spawn(['/usr/bin/systemctl', 'restart', 'docker'],
+          {superuser: 'require', err: 'message'});
+    })
+    .then(function() { hideUnlockBanner(); loadPools(); })
+    .catch(function(err) {
+      alertEl.innerHTML = '<span style="color:#c9190b">✗ ' + esc(String(err.message || err)) + '</span>';
+      document.getElementById('btn-do-unlock-recovery').disabled = false;
+    });
+}
+
+function renderEncryptionCard(encryptedPools) {
+  var card = document.getElementById('card-encryption');
+  if (!encryptedPools.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var wrap = document.getElementById('encryption-manage-wrap');
+  wrap.innerHTML = '';
+
+  encryptedPools.forEach(function(p) {
+    var isUnlocked = p.keystatus === 'available';
+    var badge = isUnlocked
+      ? '<span class="badge badge-ok">Unlocked</span>'
+      : '<span class="badge badge-lock">Locked</span>';
+    var eid = 'enc-' + p.name.replace(/[^a-zA-Z0-9]/g, '_');
+
+    var html = '<div class="enc-section">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:' +
+        (isUnlocked ? '12' : '0') + 'px">' +
+        '<strong>' + esc(p.name) + '</strong>' + badge +
+      '</div>';
+
+    if (isUnlocked) {
+      html +=
+        '<div id="' + eid + '-chpass" style="display:none;margin-bottom:12px">' +
+          '<div class="form-group" style="margin-bottom:8px">' +
+            '<label>Current passphrase</label>' +
+            '<input type="password" id="' + eid + '-old">' +
+          '</div>' +
+          '<div class="form-group" style="margin-bottom:8px">' +
+            '<label>New passphrase (min 12 chars)</label>' +
+            '<input type="password" id="' + eid + '-new1">' +
+          '</div>' +
+          '<div class="form-group" style="margin-bottom:8px">' +
+            '<label>Confirm new passphrase</label>' +
+            '<input type="password" id="' + eid + '-new2">' +
+          '</div>' +
+          '<div class="btn-row">' +
+            '<button class="btn btn-primary" id="' + eid + '-btn-chpass">Change</button>' +
+            '<button class="btn btn-secondary" id="' + eid + '-btn-cancel-chpass">Cancel</button>' +
+          '</div>' +
+          '<div id="' + eid + '-chpass-alert"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="btn btn-secondary" id="' + eid + '-btn-show-chpass">Change passphrase</button>' +
+          '<button class="btn btn-secondary" id="' + eid + '-btn-chk-kf">Check keyfile on USB</button>' +
+        '</div>' +
+        '<div id="' + eid + '-kf-info" style="display:none;margin-top:8px"></div>';
+    }
+
+    html += '</div>';
+    wrap.insertAdjacentHTML('beforeend', html);
+
+    if (isUnlocked) {
+      var pn = p.name;
+      document.getElementById(eid + '-btn-show-chpass').addEventListener('click', function() {
+        document.getElementById(eid + '-chpass').style.display = '';
+        this.style.display = 'none';
+      });
+      document.getElementById(eid + '-btn-cancel-chpass').addEventListener('click', function() {
+        document.getElementById(eid + '-chpass').style.display = 'none';
+        document.getElementById(eid + '-btn-show-chpass').style.display = '';
+      });
+      document.getElementById(eid + '-btn-chpass').addEventListener('click', function() {
+        changePassphrase(pn, eid);
+      });
+      document.getElementById(eid + '-btn-chk-kf').addEventListener('click', function() {
+        checkKeyfileStatus(pn, eid);
+      });
+    }
+  });
+}
+
+function changePassphrase(poolName, eid) {
+  var old1 = document.getElementById(eid + '-old').value;
+  var new1 = document.getElementById(eid + '-new1').value;
+  var new2 = document.getElementById(eid + '-new2').value;
+  var alertEl = document.getElementById(eid + '-chpass-alert');
+
+  if (!old1) { showAlert(eid + '-chpass-alert', 'warning', 'Enter current passphrase.'); return; }
+  if (new1.length < 12) { showAlert(eid + '-chpass-alert', 'warning', 'New passphrase must be at least 12 characters.'); return; }
+  if (new1 !== new2) { showAlert(eid + '-chpass-alert', 'warning', 'Passphrases do not match.'); return; }
+
+  showAlert(eid + '-chpass-alert', 'warning', 'Changing passphrase…');
+  document.getElementById(eid + '-btn-chpass').disabled = true;
+
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'change-passphrase', poolName],
+      {superuser: 'require', err: 'message'})
+    .input(old1 + '\n' + new1 + '\n')
+    .then(function() {
+      showAlert(eid + '-chpass-alert', 'success', 'Passphrase changed.');
+      [eid + '-old', eid + '-new1', eid + '-new2'].forEach(function(id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById(eid + '-btn-chpass').disabled = false;
+    })
+    .catch(function(err) {
+      showAlert(eid + '-chpass-alert', 'danger', String(err.message || err));
+      document.getElementById(eid + '-btn-chpass').disabled = false;
+    });
+}
+
+function checkKeyfileStatus(poolName, eid) {
+  var infoEl = document.getElementById(eid + '-kf-info');
+  infoEl.style.display = '';
+  infoEl.innerHTML = '<span class="hint">Checking…</span>';
+
+  var kfPath = '/run/pinneos/persist/encryption/' + poolName + '.key.enc';
+  cockpit.spawn(['/usr/bin/test', '-f', kfPath], {superuser: 'try', err: 'message'})
+    .then(function() {
+      infoEl.innerHTML =
+        '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<span>Keyfile on USB: <strong>Yes</strong> — boot-time unlock enabled.</span>' +
+          '<button class="btn btn-danger-sm" id="' + eid + '-btn-rmkf">Remove</button>' +
+        '</div>';
+      document.getElementById(eid + '-btn-rmkf').addEventListener('click', function() {
+        removeKeyfile(poolName, eid);
+      });
+    })
+    .catch(function() {
+      infoEl.innerHTML =
+        '<div class="alert alert-warning" style="margin-bottom:8px">' +
+          'Keyfile on USB: <strong>No</strong> — unlock requires recovery key.' +
+        '</div>' +
+        '<div id="' + eid + '-kf-add-form">' +
+          '<div class="form-group" style="margin-bottom:8px">' +
+            '<label>New passphrase for keyfile (min 12 chars)</label>' +
+            '<input type="password" id="' + eid + '-kf-pass">' +
+          '</div>' +
+          '<div class="form-group" style="margin-bottom:8px">' +
+            '<label>Recovery key (64 hex chars)</label>' +
+            '<input type="text" id="' + eid + '-kf-rec" placeholder="a3f7c2…8b91d4" style="font-family:monospace">' +
+          '</div>' +
+          '<button class="btn btn-primary" id="' + eid + '-btn-savekf">Save keyfile to USB</button>' +
+          '<div id="' + eid + '-kf-alert"></div>' +
+        '</div>';
+      document.getElementById(eid + '-btn-savekf').addEventListener('click', function() {
+        saveKeyfile(poolName, eid);
+      });
+    });
+}
+
+function removeKeyfile(poolName, eid) {
+  if (!window.confirm('Remove keyfile from USB? Boot-time unlock will be disabled.')) return;
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'remove-keyfile', poolName],
+      {superuser: 'require', err: 'message'})
+    .then(function() { checkKeyfileStatus(poolName, eid); })
+    .catch(function(err) {
+      document.getElementById(eid + '-kf-info').innerHTML =
+        '<div class="alert alert-danger">' + esc(String(err.message || err)) + '</div>';
+    });
+}
+
+function saveKeyfile(poolName, eid) {
+  var pass = (document.getElementById(eid + '-kf-pass') || {}).value || '';
+  var rec  = ((document.getElementById(eid + '-kf-rec') || {}).value || '').trim().toLowerCase();
+  var alertId = eid + '-kf-alert';
+
+  if (pass.length < 12) { showAlert(alertId, 'warning', 'Passphrase must be at least 12 characters.'); return; }
+  if (!/^[0-9a-f]{64}$/.test(rec)) { showAlert(alertId, 'warning', 'Invalid recovery key format.'); return; }
+
+  showAlert(alertId, 'warning', 'Saving keyfile…');
+  cockpit.spawn(['/usr/lib/homelab/zfs-encrypt.sh', 'save-keyfile', poolName],
+      {superuser: 'require', err: 'message'})
+    .input(pass + '\n' + rec + '\n')
+    .then(function() { checkKeyfileStatus(poolName, eid); })
+    .catch(function(err) { showAlert(alertId, 'danger', String(err.message || err)); });
+}
+
+// ── Recovery key modal ────────────────────────────────────────────────────────
+
+var _recoveryPoolName = '';
+var _recoveryHex = '';
+
+function showRecoveryKeyModal(poolName, hex) {
+  _recoveryPoolName = poolName;
+  _recoveryHex = hex;
+  document.getElementById('recovery-key-hex').textContent = hex;
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function downloadRecoveryKey() {
+  var blob = new Blob([_recoveryHex + '\n'], {type: 'text/plain'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'recovery-key-' + _recoveryPoolName + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── Event delegation for dynamic table buttons ────────────────────────────────
@@ -667,6 +1048,19 @@ document.getElementById('btn-show-create-pool').addEventListener('click', functi
 });
 document.getElementById('btn-cancel-create-pool').addEventListener('click', function() {
   document.getElementById('create-pool-form').style.display = 'none';
+  document.getElementById('encrypt-pool').checked = false;
+  document.getElementById('encrypt-fields').style.display = 'none';
+});
+
+document.getElementById('encrypt-pool').addEventListener('change', function() {
+  document.getElementById('encrypt-fields').style.display = this.checked ? '' : 'none';
+});
+
+document.getElementById('btn-download-recovery-key').addEventListener('click', downloadRecoveryKey);
+document.getElementById('btn-close-recovery-modal').addEventListener('click', function() {
+  document.getElementById('modal-overlay').style.display = 'none';
+  _recoveryHex = '';
+  _recoveryPoolName = '';
 });
 document.getElementById('btn-create-pool').addEventListener('click', createPool);
 

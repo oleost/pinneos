@@ -140,3 +140,18 @@ tr:last-child td { border-bottom: none; }
 }
 .badge-ok   { background: #f3faf2; color: #1e4f18; border: 1px solid #3e8635; }
 .badge-warn { background: #fdf7e7; color: #795600; border: 1px solid #f0ab00; }
+.badge-lock { background: #fdf7f7; color: #7d1007; border: 1px solid #c9190b; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000;
+  align-items: center; justify-content: center;
+}
+
+.enc-section {
+  border: 1px solid #d2d2d2; border-radius: 4px; padding: 14px; margin-bottom: 10px;
+}
+.enc-section:last-child { margin-bottom: 0; }
+
+.encrypt-fields {
+  border-left: 3px solid #0066cc; padding-left: 14px; margin: 12px 0 4px;
+}

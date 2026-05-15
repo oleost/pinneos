@@ -25,6 +25,14 @@ KEEP_SNAPSHOTS=7  # default retention
 log()  { logger -t pinneos-backup "$*"; echo "[backup] $*"; }
 die()  { log "ERROR: $*"; exit 1; }
 
+# ZFS 2.4.1 bug: zfs send on encrypted datasets can silently corrupt without -w.
+# Returns the extra flag needed ("w") or empty string.
+send_raw_flag() {
+    local enc
+    enc=$(zfs get -H -o value encryption "$1" 2>/dev/null)
+    [ "$enc" != "off" ] && [ "$enc" != "-" ] && echo "w" || true
+}
+
 usage() {
     echo "Usage: backup.sh create --dest DEST [--mode system-apps|full] [--label NAME]"
     echo "       backup.sh list   --dest DEST"
@@ -106,6 +114,9 @@ cmd_create() {
         log "Snapshotting $dataset..."
         zfs snapshot -r "${dataset}@${snap_name}"
 
+        local raw_flag
+        raw_flag=$(send_raw_flag "$dataset")
+
         if dest_is_zfs "$dest"; then
             local dest_dataset="${dest}/${dataset##*/}"
             local common
@@ -113,13 +124,13 @@ cmd_create() {
 
             if [ -n "$common" ]; then
                 log "Incremental send: $dataset (@$common → @$snap_name)..."
-                zfs send -Rp -i "@${common}" "${dataset}@${snap_name}" \
+                zfs send -Rp${raw_flag} -i "@${common}" "${dataset}@${snap_name}" \
                     | zfs receive -F "$dest_dataset"
             else
                 log "Full send: $dataset → $dest_dataset..."
                 # Ensure parent dataset exists on destination
                 zfs create -p "${dest_dataset%/*}" 2>/dev/null || true
-                zfs send -Rp "${dataset}@${snap_name}" \
+                zfs send -Rp${raw_flag} "${dataset}@${snap_name}" \
                     | zfs receive -F "$dest_dataset"
             fi
 
@@ -133,7 +144,7 @@ cmd_create() {
             mkdir -p "$dest"
             local out_file="${dest}/${dataset##*/}-${snap_name}.zfs.zst"
             log "File send: $dataset → $out_file..."
-            zfs send -Rp "${dataset}@${snap_name}" | zstd -T0 -3 > "$out_file"
+            zfs send -Rp${raw_flag} "${dataset}@${snap_name}" | zstd -T0 -3 > "$out_file"
             sha256sum "$out_file" > "${out_file}.sha256"
         fi
 

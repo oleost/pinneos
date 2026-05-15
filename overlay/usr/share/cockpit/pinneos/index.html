@@ -73,8 +73,27 @@
   </div>
 </div>
 
+<!-- Recovery key modal -->
+<div id="modal-overlay" class="modal-overlay" style="display:none">
+  <div class="card" style="width:500px;max-width:95vw">
+    <div class="card-header">⚠ Recovery Key — Save This Now</div>
+    <div class="card-body">
+      <p style="margin-bottom:12px">
+        This is the <strong>only copy</strong> of your pool's recovery key.
+        If you forget your passphrase, this key is the only way to recover your data.
+        Store it outside this server (password manager, safe).
+      </p>
+      <div id="recovery-key-hex" class="output-pre" style="font-size:13px;word-break:break-all;margin-bottom:12px">—</div>
+      <button class="btn btn-secondary" id="btn-download-recovery-key" style="margin-bottom:16px">↓ Download recovery-key.txt</button>
+      <p class="hint" style="color:#c9190b;margin-bottom:16px">This dialog cannot be reopened. Download or copy the key before closing.</p>
+      <button class="btn btn-primary" id="btn-close-recovery-modal">I have saved the recovery key</button>
+    </div>
+  </div>
+</div>
+
 <!-- ZFS TAB -->
 <div id="pane-zfs" class="pane" style="display:none">
+  <div id="unlock-banner" style="display:none;margin-bottom:16px"></div>
   <div class="grid">
 
     <!-- Pools -->
@@ -103,6 +122,30 @@
               <option value="raidz3">RAID-Z3 (5+ disks, 3 parity)</option>
             </select>
           </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="radio-label" style="font-weight:normal;margin-bottom:4px">
+              <input type="checkbox" id="encrypt-pool" style="margin-right:6px">
+              Enable ZFS native encryption
+            </label>
+            <p class="hint">Requires passphrase on each reboot. Data is unrecoverable without passphrase + recovery key.</p>
+          </div>
+          <div id="encrypt-fields" class="encrypt-fields" style="display:none">
+            <div class="form-group">
+              <label for="encrypt-pass1">Encryption passphrase (min 12 chars)</label>
+              <input type="password" id="encrypt-pass1" autocomplete="new-password" placeholder="strong passphrase">
+            </div>
+            <div class="form-group">
+              <label for="encrypt-pass2">Confirm passphrase</label>
+              <input type="password" id="encrypt-pass2" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label class="radio-label" style="font-weight:normal">
+                <input type="checkbox" id="encrypt-save-usb" checked style="margin-right:6px">
+                Save encrypted keyfile on USB persist partition
+              </label>
+              <p class="hint">Recommended — enables passphrase-based unlock at each boot via this UI.</p>
+            </div>
+          </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="btn-create-pool">Create</button>
             <button class="btn btn-secondary" id="btn-cancel-create-pool">Cancel</button>
@@ -110,6 +153,14 @@
           <div id="create-pool-alert"></div>
         </div>
         <div id="pool-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Encryption management (shown only when encrypted pools exist) -->
+    <div class="card" id="card-encryption" style="display:none">
+      <div class="card-header">Encryption</div>
+      <div class="card-body">
+        <div id="encryption-manage-wrap"></div>
       </div>
     </div>
 

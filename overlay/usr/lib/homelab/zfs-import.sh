@@ -23,6 +23,15 @@ zfs_mounted=0
 for pool in $(zpool list -H -o name 2>/dev/null); do
     managed=$(zfs get -H -o value "$ZFS_MANAGED_PROPERTY" "$pool" 2>/dev/null)
     if [ "$managed" = "yes" ]; then
+        # Check for native encryption — if enabled, defer mounting until user unlocks via Cockpit
+        enc=$(zfs get -H -o value encryption "$pool" 2>/dev/null)
+        if [ "$enc" != "off" ] && [ "$enc" != "-" ]; then
+            log "Pool $pool is encrypted — deferring mount, waiting for Cockpit unlock"
+            mkdir -p /run/pinneos
+            printf '%s' "$pool" > /run/pinneos/unlock-needed
+            break
+        fi
+
         log "Mounting datasets on pool: $pool"
         zfs mount -a 2>/dev/null || true
 

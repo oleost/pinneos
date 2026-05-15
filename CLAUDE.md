@@ -300,13 +300,17 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
 - SMART disk monitoring (`smartd` + `smart-alert.sh` — logs to journal, optional Gotify push)
 - ZFS scrub timer (`pinneos-zfs-scrub.timer` — monthly, all managed pools)
 - Gotify push notification integration (optional, configure via `/etc/homelab/gotify-{url,token}`)
+- **ZFS native encryption** — full implementation:
+  - `overlay/usr/lib/homelab/zfs-encrypt.sh` — backend helper (create-pool, unlock, unlock-recovery, change-passphrase, remove/save-keyfile)
+  - `zfs-import.sh` — detects encrypted pools at boot, writes `/run/pinneos/unlock-needed`
+  - `backup.sh` — uses `zfs send -w` (raw send) for encrypted datasets (ZFS 2.4.1 bug fix)
+  - Cockpit ZFS tab: unlock banner on boot, encrypted pool creation with passphrase, recovery key modal, encryption status per pool, passphrase change, keyfile USB management
 
 ### In progress / TODO
 - First-boot wizard does not auto-launch at login yet (wizard exists at `/usr/lib/homelab/wizard.py` but getty auto-launch not configured)
 - `cockpit-zfs/index.html` — the old ZFS plugin skeleton; the real plugin is in `overlay/usr/share/cockpit/pinneos/`
 - Cockpit plugin: ZFS pool/dataset management UI — pool status, scrub status, last scrub result (section 1-4 planned in pinneos.js comments)
 - First-boot web wizard Phase 2 (ZFS pool creation UI in Cockpit)
-- ZFS native encryption support — full plan in `docs/zfs-encryption-plan.md`
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager
 
 ### Known gaps
