@@ -296,6 +296,7 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
 - Component inventory and weekly automated update checks (`docs/components.md`, `.github/workflows/update-check.yml`)
 - GitHub Actions CI: builds ISO+IMG.gz on tag push, creates draft release
 - **v0.1.0 tested on real hardware (ASUS UEFI PC) — boots correctly**
+- **v0.2.0** — ZFS encryption, pool health UI, backup USB serial-based identification, update.sh IMG.gz support, Cockpit UI fixes
 - **Backup USB sync tested and working** (dual-USB dual-label bug fixed)
 - SMART disk monitoring (`smartd` + `smart-alert.sh` — logs to journal, optional Gotify push)
 - ZFS scrub timer (`pinneos-zfs-scrub.timer` — monthly, all managed pools)
@@ -305,20 +306,20 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
   - `zfs-import.sh` — detects encrypted pools at boot, writes `/run/pinneos/unlock-needed`
   - `backup.sh` — uses `zfs send -w` (raw send) for encrypted datasets (ZFS 2.4.1 bug fix)
   - Cockpit ZFS tab: unlock banner on boot, encrypted pool creation with passphrase, recovery key modal, encryption status per pool, passphrase change, keyfile USB management
+- **Pool health visualization** — `zpool status` output parsed and rendered in Cockpit ZFS tab: state badge, scrub status (last run, color-coded), vdev tree, run/cancel scrub buttons
+- **Release mounts button** — stops Docker and unmounts `/var/lib/docker` from ZFS apps dataset so pools can be cleanly destroyed
+- **First-boot wizard** — `/usr/lib/homelab/wizard.py` (hostname, password, backup USB). Run manually after first login: `pinneos-wizard`
+- **update.sh complete** — downloads `.img.gz` (preferred) or `.iso` (fallback), verifies SHA256, mounts via `losetup -P` (IMG) or loop (ISO), copies kernel/initramfs/squashfs to standby slot, flips grubenv atomically
+- `cockpit-zfs/` skeleton deleted — real plugin lives in `overlay/usr/share/cockpit/pinneos/`
 
 ### In progress / TODO
-- First-boot wizard does not auto-launch at login yet (wizard exists at `/usr/lib/homelab/wizard.py` but getty auto-launch not configured)
-- `cockpit-zfs/index.html` — the old ZFS plugin skeleton; the real plugin is in `overlay/usr/share/cockpit/pinneos/`
-- Cockpit plugin: ZFS pool/dataset management UI — pool status, scrub status, last scrub result (section 1-4 planned in pinneos.js comments)
 - First-boot web wizard Phase 2 (ZFS pool creation UI in Cockpit)
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager
 
 ### Known gaps
 - Password doesn't persist across reboots without ZFS pool (works with ZFS system/ dataset)
-- The `update.sh` script has a TODO: extracting squashfs/kernel/initramfs from the downloaded IMG file
 - A/B USB update flow not yet tested end-to-end on real hardware
 - ARM/Raspberry Pi support: parked as v2 scope
-- Cockpit ZFS tab has no visual UI for pool health or scrub status yet (planned, see TODO above)
 
 ### Bootmode history
 - `bios.grub.mbr` was attempted but is not a valid archiso boot mode (removed in newer archiso versions)
@@ -339,17 +340,17 @@ cd build
 make build
 
 # Build the ISO (first run ~20-30 min, downloads ~1 GB packages)
-make image VERSION=0.1.0
-# Output: ../release/pinneos-0.1.0-x86_64.iso
+make image VERSION=0.2.0
+# Output: ../release/pinneos-0.2.0-x86_64.iso
 
 # Test in QEMU (optional)
-make qemu VERSION=0.1.0
+make qemu VERSION=0.2.0
 
 # Write to USB (destructive — types YES to confirm)
-make write DEVICE=/dev/sdX VERSION=0.1.0
+make write DEVICE=/dev/sdX VERSION=0.2.0
 
 # Build + generate SHA256 + manifest for GitHub release
-make release VERSION=0.1.0
+make release VERSION=0.2.0
 ```
 
 **Write to USB on Windows/macOS:**
@@ -385,22 +386,17 @@ overlay/                      Baked into the live SquashFS via build.sh
   etc/udev/rules.d/90-pinneos-backup-usb.rules  Detects backup USB by UUID
   usr/lib/homelab/
     zfs-import.sh             Find + import managed ZFS pool, bind-mount /var/lib/docker
-    update.sh                 A/B slot update: download, verify, write slot, flip grubenv
+    zfs-encrypt.sh            ZFS native encryption backend (create, unlock, passphrase, keyfile)
+    update.sh                 A/B slot update: IMG.gz (preferred) or ISO, verify, write, flip grubenv
     update-check.sh           Poll GitHub Releases API, write state file if update available
     backup-usb-sync.sh        Rsync active slot to backup USB
     match-backup-usb.sh       udev helper: returns 0 if device matches registered backup UUID
     backup.sh                 ZFS send/receive backup (create / list / prune)
     restore.sh                ZFS receive restore (list / run), works in recovery mode
+    wizard.py                 First-boot console wizard (hostname, password, backup USB)
 
 grub/grub.cfg.template        Reference template for the A/B runtime GRUB config
                               (separate from the live-ISO GRUB config in build/profile/grub/)
-
-cockpit-zfs/
-  manifest.json               Cockpit plugin registration
-  index.html                  Plugin UI skeleton + full implementation plan in comments
-
-wizard/
-  tui/wizard.py               First-boot console wizard skeleton (TODO: implement)
 
 docs/
   architecture.md             Technical architecture reference

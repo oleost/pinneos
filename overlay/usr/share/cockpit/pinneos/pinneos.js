@@ -1080,25 +1080,27 @@ function runRestore() {
 
 // ── Backup USB (Setup tab) ────────────────────────────────────────────────────
 
-var BACKUP_UUID_FILE = '/etc/homelab/backup-usb-uuid';
+var BACKUP_SERIAL_FILE = '/etc/homelab/backup-usb-serial';
 
 function loadBackupUsb() {
-  cockpit.spawn(['/usr/bin/cat', BACKUP_UUID_FILE], {err: 'message'})
+  cockpit.spawn(['/usr/bin/cat', BACKUP_SERIAL_FILE], {err: 'message'})
     .then(function(content) {
-      renderBackupUsbRegistered((content || '').trim());
+      var serial = (content || '').trim();
+      renderBackupUsbRegistered(serial);
+      scanBackupUsbCandidates(serial);
     })
     .catch(function() {
       renderBackupUsbRegistered('');
+      scanBackupUsbCandidates('');
     });
-  scanBackupUsbCandidates();
 }
 
-function renderBackupUsbRegistered(uuid) {
+function renderBackupUsbRegistered(serial) {
   var el = document.getElementById('backup-usb-registered');
-  if (uuid) {
+  if (serial) {
     el.innerHTML =
       '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
-        '<span><strong>Registered</strong> — UUID: <code>' + esc(uuid) + '</code></span>' +
+        '<span><strong>Registered</strong> — Serial: <code>' + esc(serial) + '</code></span>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' +
           '<button class="btn btn-primary" id="btn-sync-backup-usb">Sync now</button>' +
           '<button class="btn btn-danger-sm" id="btn-unregister-backup-usb">Remove</button>' +
@@ -1111,55 +1113,62 @@ function renderBackupUsbRegistered(uuid) {
   }
 }
 
-function scanBackupUsbCandidates() {
+function scanBackupUsbCandidates(registeredSerial) {
   var wrap = document.getElementById('backup-usb-candidates');
   wrap.innerHTML = '<p class="empty-text">Scanning for PinneOS USB sticks…</p>';
   findBootDisk()
     .then(function(bootDisk) { return findBackupCandidates(bootDisk); })
-    .then(function(candidates) { renderBackupUsbCandidates(candidates); })
-    .catch(function() { renderBackupUsbCandidates([]); });
+    .then(function(candidates) { renderBackupUsbCandidates(candidates, registeredSerial || ''); })
+    .catch(function() { renderBackupUsbCandidates([], ''); });
 }
 
 function findBootDisk() {
-  function diskOf(label) {
-    return cockpit.spawn(['/usr/bin/findfs', 'LABEL=' + label], {err: 'message'})
-      .then(function(part) {
-        return cockpit.spawn(['/usr/bin/lsblk', '-no', 'PKNAME', part.trim()], {err: 'message'});
-      })
-      .then(function(out) { return '/dev/' + out.trim(); });
-  }
-  return diskOf('PINNEOS_A')
-    .catch(function() { return diskOf('PINNEOS_B'); })
-    .catch(function() { return ''; });
+  // Use the persist mount to identify the boot disk unambiguously.
+  // findfs LABEL=PINNEOS_A is ambiguous when both USBs share identical labels.
+  return cockpit.spawn(
+    ['/usr/bin/findmnt', '-n', '-o', 'SOURCE', '/run/pinneos/persist'],
+    {err: 'message'}
+  ).then(function(part) {
+    return cockpit.spawn(['/usr/bin/lsblk', '-no', 'PKNAME', part.trim()], {err: 'message'});
+  }).then(function(out) { return '/dev/' + out.trim(); })
+  .catch(function() { return ''; });
 }
 
 function findBackupCandidates(bootDisk) {
   return cockpit.spawn(
-    ['/usr/bin/lsblk', '-J', '-b', '-o', 'NAME,SIZE,MODEL,TYPE,LABEL,UUID'],
+    ['/usr/bin/lsblk', '-J', '-b', '-o', 'NAME,SIZE,MODEL,TYPE,LABEL'],
     {err: 'message'}
   ).then(function(output) {
     var data = JSON.parse(output);
-    var candidates = [];
+    var diskCandidates = [];
     (data.blockdevices || []).forEach(function(dev) {
       if (dev.type !== 'disk') return;
       var disk = '/dev/' + dev.name;
       if (disk === bootDisk) return;
-      (dev.children || []).forEach(function(child) {
-        if (child.label === 'PINNEOS_A' && child.uuid) {
-          candidates.push({
-            disk:  disk,
-            uuid:  child.uuid,
-            model: (dev.model || 'Unknown').trim(),
-            size:  dev.size,
-          });
-        }
-      });
+      var hasPinneosA = (dev.children || []).some(function(c) { return c.label === 'PINNEOS_A'; });
+      if (!hasPinneosA) return;
+      diskCandidates.push({ disk: disk, model: (dev.model || 'Unknown').trim(), size: dev.size });
     });
-    return candidates;
+    // Fetch serial number for each candidate via udevadm (partition UUIDs are identical on cloned USBs)
+    return Promise.all(diskCandidates.map(function(c) {
+      return cockpit.spawn(
+        ['/usr/bin/udevadm', 'info', '--query=property', c.disk],
+        {err: 'message'}
+      ).then(function(info) {
+        var serial = '';
+        info.split('\n').forEach(function(line) {
+          if (line.indexOf('ID_SERIAL_SHORT=') === 0)
+            serial = line.slice('ID_SERIAL_SHORT='.length).trim();
+        });
+        return { disk: c.disk, serial: serial || c.disk, model: c.model, size: c.size };
+      }).catch(function() {
+        return { disk: c.disk, serial: c.disk, model: c.model, size: c.size };
+      });
+    }));
   });
 }
 
-function renderBackupUsbCandidates(candidates) {
+function renderBackupUsbCandidates(candidates, registeredSerial) {
   var wrap = document.getElementById('backup-usb-candidates');
   if (!candidates.length) {
     wrap.innerHTML =
@@ -1169,20 +1178,23 @@ function renderBackupUsbCandidates(candidates) {
   }
   var html = '<p style="margin:0 0 8px;font-weight:600">Detected PinneOS USBs:</p>';
   candidates.forEach(function(c) {
+    var isRegistered = registeredSerial && c.serial === registeredSerial;
     html += '<div class="disk-item" style="justify-content:space-between">' +
       '<div>' +
         '<span class="disk-name">' + esc(c.disk) + '</span> ' +
         '<span class="disk-meta">' + esc(c.model) + ' — ' + fmtBytes(c.size) + '</span>' +
       '</div>' +
-      '<button class="btn btn-primary" data-action="register-backup" ' +
-        'data-uuid="' + esc(c.uuid) + '">Register</button>' +
+      (isRegistered
+        ? '<span class="badge badge-ok">✓ Registered</span>'
+        : '<button class="btn btn-primary" data-action="register-backup" data-serial="' + esc(c.serial) + '">Register</button>'
+      ) +
       '</div>';
   });
   wrap.innerHTML = html;
 }
 
-function registerBackupUsb(uuid) {
-  cockpit.spawn(['/usr/bin/bash', '-c', 'echo ' + uuid + ' > ' + BACKUP_UUID_FILE],
+function registerBackupUsb(serial) {
+  cockpit.spawn(['/usr/bin/bash', '-c', 'printf "%s\n" "$1" > ' + BACKUP_SERIAL_FILE, '--', serial],
     {superuser: 'try', err: 'message'})
     .then(function() {
       showAlert('backup-usb-alert', 'success', 'Backup USB registered.');
@@ -1195,8 +1207,10 @@ function registerBackupUsb(uuid) {
 
 function unregisterBackupUsb() {
   if (!window.confirm('Remove backup USB registration?')) return;
-  cockpit.spawn(['/usr/bin/rm', '-f', BACKUP_UUID_FILE], {superuser: 'try', err: 'message'})
-    .then(function() {
+  cockpit.spawn(
+    ['/usr/bin/rm', '-f', BACKUP_SERIAL_FILE, '/etc/homelab/backup-usb-uuid'],
+    {superuser: 'try', err: 'message'}
+  ).then(function() {
       showAlert('backup-usb-alert', 'success', 'Registration removed.');
       loadBackupUsb();
     })
@@ -1281,7 +1295,7 @@ document.getElementById('dataset-pool-select').addEventListener('change', functi
 document.getElementById('backup-usb-candidates').addEventListener('click', function(e) {
   var btn = e.target.closest('[data-action]');
   if (!btn) return;
-  if (btn.dataset.action === 'register-backup') registerBackupUsb(btn.dataset.uuid);
+  if (btn.dataset.action === 'register-backup') registerBackupUsb(btn.dataset.serial);
 });
 
 document.getElementById('btn-refresh-backup-usb').addEventListener('click', function() {

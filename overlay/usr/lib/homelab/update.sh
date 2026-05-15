@@ -1,6 +1,9 @@
 #!/bin/sh
 # PinneOS USB image updater — A/B slot scheme
 # Triggered manually from Cockpit or CLI.
+#
+# Asset preference: .img.gz (raw disk image, slots pre-formatted) over .iso.
+# IMG.gz partition layout: p1=EFI, p2=Slot A (source), p3=Slot B, p4=Persist.
 
 set -e
 . /etc/homelab/config
@@ -34,52 +37,102 @@ fi
 
 log "Update available: $current → $latest"
 
-# 2. Download new ISO and checksum
-base_url=$(echo "$manifest" | jq -r '.assets[] | select(.name | endswith(".iso")) | .browser_download_url')
-sum_url=$(echo "$manifest"  | jq -r '.assets[] | select(.name | endswith(".iso.sha256")) | .browser_download_url')
+# 2. Prefer IMG.gz (raw disk image); fall back to ISO
+img_url=$(echo "$manifest" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url' | head -1)
+iso_url=$(echo "$manifest" | jq -r '.assets[] | select(.name | endswith(".iso"))    | .browser_download_url' | head -1)
 
-[ -n "$base_url" ] || die "No .iso asset found in release $latest."
+[ -n "$img_url" ] || [ -n "$iso_url" ] || \
+    die "No .img.gz or .iso asset found in release $latest."
 
 tmpdir=$(mktemp -d)
-iso_mnt=$(mktemp -d)
+src_mnt=$(mktemp -d)
 slot_mnt="/mnt/pinneos-slot-target"
-trap 'umount "$iso_mnt" 2>/dev/null; umount "$slot_mnt" 2>/dev/null; rm -rf "$tmpdir" "$iso_mnt"' EXIT
+loop_dev=""
+img_mode=0
 
-log "Downloading $latest..."
-curl -Lf "$base_url" -o "$tmpdir/new.iso"
-curl -Lf "$sum_url"  -o "$tmpdir/new.iso.sha256"
+cleanup() {
+    umount "$src_mnt"  2>/dev/null || true
+    umount "$slot_mnt" 2>/dev/null || true
+    [ -n "$loop_dev" ] && losetup -d "$loop_dev" 2>/dev/null || true
+    rm -rf "$tmpdir" "$src_mnt"
+}
+trap cleanup EXIT
 
-# 3. Verify checksum
-(cd "$tmpdir" && sha256sum -c new.iso.sha256) || die "Checksum verification failed."
+# 3. Download, verify, and mount source
+if [ -n "$img_url" ]; then
+    sum_url=$(echo "$manifest" | jq -r \
+        '.assets[] | select(.name | endswith(".img.gz.sha256")) | .browser_download_url' \
+        | head -1)
+    [ -n "$sum_url" ] || die "No .img.gz.sha256 found for $latest."
 
-# 4. Extract slot content from ISO and write to standby slot
+    log "Downloading $latest (img.gz)..."
+    curl -Lf "$img_url" -o "$tmpdir/new.img.gz"
+    curl -Lf "$sum_url" -o "$tmpdir/new.img.gz.sha256"
+
+    log "Verifying checksum..."
+    (cd "$tmpdir" && sha256sum -c new.img.gz.sha256) || die "Checksum verification failed."
+
+    log "Decompressing image..."
+    gzip -d "$tmpdir/new.img.gz"   # produces new.img
+
+    log "Mounting raw image (partition 2 = Slot A)..."
+    loop_dev=$(losetup -f --show -P "$tmpdir/new.img")
+    mount -o ro "${loop_dev}p2" "$src_mnt"
+    img_mode=1
+else
+    sum_url=$(echo "$manifest" | jq -r \
+        '.assets[] | select(.name | endswith(".iso.sha256")) | .browser_download_url' \
+        | head -1)
+    [ -n "$sum_url" ] || die "No .iso.sha256 found for $latest."
+
+    log "Downloading $latest (iso)..."
+    curl -Lf "$iso_url" -o "$tmpdir/new.iso"
+    curl -Lf "$sum_url" -o "$tmpdir/new.iso.sha256"
+
+    log "Verifying checksum..."
+    (cd "$tmpdir" && sha256sum -c new.iso.sha256) || die "Checksum verification failed."
+
+    log "Mounting ISO..."
+    mount -o loop,ro "$tmpdir/new.iso" "$src_mnt"
+fi
+
+# 4. Write kernel, initramfs, and squashfs to standby slot
 target=$(other_slot)
 target_dev=$(slot_dev "$target")
 log "Writing to slot $target ($target_dev)..."
 
-# Mount the ISO read-only via loop device
-mount -o loop,ro "$tmpdir/new.iso" "$iso_mnt"
-
-# Mount the target slot partition (ext4)
 mkdir -p "$slot_mnt"
 mount "$target_dev" "$slot_mnt"
 
-log "Copying kernel..."
-cp "$iso_mnt/pinneos/boot/x86_64/vmlinuz-linux-lts" "$slot_mnt/vmlinuz"
-
-log "Copying initramfs..."
-cp "$iso_mnt/pinneos/boot/x86_64/initramfs-linux-lts.img" "$slot_mnt/initramfs.img"
-
-log "Copying squashfs..."
-mkdir -p "$slot_mnt/pinneos/x86_64"
-cp "$iso_mnt/pinneos/x86_64/airootfs.sfs" "$slot_mnt/pinneos/x86_64/airootfs.sfs"
-# Copy integrity file if present
-cp "$iso_mnt/pinneos/x86_64/airootfs.sfs.sha512" \
-   "$slot_mnt/pinneos/x86_64/airootfs.sfs.sha512" 2>/dev/null || true
+if [ "$img_mode" = "1" ]; then
+    # Slot A from the IMG already has files in the final slot layout
+    log "Copying kernel..."
+    cp "$src_mnt/vmlinuz"       "$slot_mnt/vmlinuz"
+    log "Copying initramfs..."
+    cp "$src_mnt/initramfs.img" "$slot_mnt/initramfs.img"
+    log "Copying squashfs..."
+    mkdir -p "$slot_mnt/pinneos/x86_64"
+    cp "$src_mnt/pinneos/x86_64/airootfs.sfs" \
+       "$slot_mnt/pinneos/x86_64/airootfs.sfs"
+    cp "$src_mnt/pinneos/x86_64/airootfs.sfs.sha512" \
+       "$slot_mnt/pinneos/x86_64/airootfs.sfs.sha512" 2>/dev/null || true
+else
+    # ISO uses archiso path layout
+    log "Copying kernel..."
+    cp "$src_mnt/pinneos/boot/x86_64/vmlinuz-linux-lts" \
+       "$slot_mnt/vmlinuz"
+    log "Copying initramfs..."
+    cp "$src_mnt/pinneos/boot/x86_64/initramfs-linux-lts.img" \
+       "$slot_mnt/initramfs.img"
+    log "Copying squashfs..."
+    mkdir -p "$slot_mnt/pinneos/x86_64"
+    cp "$src_mnt/pinneos/x86_64/airootfs.sfs" \
+       "$slot_mnt/pinneos/x86_64/airootfs.sfs"
+    cp "$src_mnt/pinneos/x86_64/airootfs.sfs.sha512" \
+       "$slot_mnt/pinneos/x86_64/airootfs.sfs.sha512" 2>/dev/null || true
+fi
 
 sync
-umount "$iso_mnt"
-umount "$slot_mnt"
 log "Slot $target written successfully."
 
 # 5. Atomic slot switch
@@ -88,6 +141,3 @@ log "Slot switched to $target. Reboot to apply update."
 
 # 6. Arm the backup USB sync timer (fires 24h from now)
 systemctl start pinneos-backup-usb-sync-delay.timer
-
-# 7. Notify web panel
-# TODO: send event to Homepage / Cockpit notification endpoint
