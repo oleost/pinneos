@@ -105,8 +105,8 @@ else
         [ -n "$sum_url" ] || die "No .img.gz.sha256 found for $latest."
 
         log "Downloading $latest (img.gz)..."
-        curl -Lf "$img_url" -o "$tmpdir/new.img.gz"
-        curl -Lf "$sum_url" -o "$tmpdir/new.img.gz.sha256"
+        curl -Lfs --http1.1 "$img_url" -o "$tmpdir/new.img.gz"
+        curl -Lfs --http1.1 "$sum_url" -o "$tmpdir/new.img.gz.sha256"
 
         log "Verifying checksum..."
         (cd "$tmpdir" && sha256sum -c new.img.gz.sha256) || die "Checksum verification failed."
@@ -125,8 +125,8 @@ else
         [ -n "$sum_url" ] || die "No .iso.sha256 found for $latest."
 
         log "Downloading $latest (iso)..."
-        curl -Lf "$iso_url" -o "$tmpdir/new.iso"
-        curl -Lf "$sum_url" -o "$tmpdir/new.iso.sha256"
+        curl -Lfs --http1.1 "$iso_url" -o "$tmpdir/new.iso"
+        curl -Lfs --http1.1 "$sum_url" -o "$tmpdir/new.iso.sha256"
 
         log "Verifying checksum..."
         (cd "$tmpdir" && sha256sum -c new.iso.sha256) || die "Checksum verification failed."
