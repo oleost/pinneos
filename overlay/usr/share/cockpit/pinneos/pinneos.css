@@ -143,6 +143,7 @@ tr:last-child td { border-bottom: none; }
 .badge-lock { background: #fdf7f7; color: #7d1007; border: 1px solid #c9190b; }
 
 .modal-overlay {
+  display: none;
   position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000;
   align-items: center; justify-content: center;
 }

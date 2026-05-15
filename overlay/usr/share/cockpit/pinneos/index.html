@@ -73,26 +73,26 @@
   </div>
 </div>
 
-<!-- Recovery key modal -->
-<div id="modal-overlay" class="modal-overlay" style="display:none">
-  <div class="card" style="width:500px;max-width:95vw">
-    <div class="card-header">⚠ Recovery Key — Save This Now</div>
-    <div class="card-body">
-      <p style="margin-bottom:12px">
-        This is the <strong>only copy</strong> of your pool's recovery key.
-        If you forget your passphrase, this key is the only way to recover your data.
-        Store it outside this server (password manager, safe).
-      </p>
-      <div id="recovery-key-hex" class="output-pre" style="font-size:13px;word-break:break-all;margin-bottom:12px">—</div>
-      <button class="btn btn-secondary" id="btn-download-recovery-key" style="margin-bottom:16px">↓ Download recovery-key.txt</button>
-      <p class="hint" style="color:#c9190b;margin-bottom:16px">This dialog cannot be reopened. Download or copy the key before closing.</p>
-      <button class="btn btn-primary" id="btn-close-recovery-modal">I have saved the recovery key</button>
-    </div>
-  </div>
-</div>
-
 <!-- ZFS TAB -->
 <div id="pane-zfs" class="pane" style="display:none">
+  <!-- Recovery key modal: inside pane-zfs so tab switching keeps it hidden -->
+  <div id="modal-overlay" class="modal-overlay">
+    <div class="card" style="width:500px;max-width:95vw">
+      <div class="card-header">⚠ Recovery Key — Save This Now</div>
+      <div class="card-body">
+        <p style="margin-bottom:12px">
+          This is the <strong>only copy</strong> of your pool's recovery key.
+          If you forget your passphrase, this key is the only way to recover your data.
+          Store it outside this server (password manager, safe).
+        </p>
+        <div id="recovery-key-hex" class="output-pre" style="font-size:13px;word-break:break-all;margin-bottom:12px">—</div>
+        <button class="btn btn-secondary" id="btn-download-recovery-key" style="margin-bottom:16px">↓ Download recovery-key.txt</button>
+        <p class="hint" style="color:#c9190b;margin-bottom:16px">This dialog cannot be reopened. Download or copy the key before closing.</p>
+        <button class="btn btn-primary" id="btn-close-recovery-modal">I have saved the recovery key</button>
+      </div>
+    </div>
+  </div>
+
   <div id="unlock-banner" style="display:none;margin-bottom:16px"></div>
   <div class="grid">
 

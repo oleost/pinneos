@@ -760,6 +760,7 @@ var _recoveryPoolName = '';
 var _recoveryHex = '';
 
 function showRecoveryKeyModal(poolName, hex) {
+  if (!hex || !/^[0-9a-f]{64}$/.test(hex)) return;
   _recoveryPoolName = poolName;
   _recoveryHex = hex;
   document.getElementById('recovery-key-hex').textContent = hex;
