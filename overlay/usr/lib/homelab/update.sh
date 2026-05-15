@@ -121,7 +121,9 @@ else
         curl -LfsS --http1.1 "$sum_url" -o "$tmpdir/new.img.gz.sha256" || die "Download failed (sha256)"
 
         log "Verifying checksum..."
-        (cd "$tmpdir" && sha256sum -c new.img.gz.sha256) || die "Checksum verification failed."
+        expected=$(awk '{print $1}' "$tmpdir/new.img.gz.sha256")
+        actual=$(sha256sum "$tmpdir/new.img.gz" | awk '{print $1}')
+        [ "$expected" = "$actual" ] || die "Checksum verification failed (expected $expected, got $actual)"
 
         log "Decompressing image..."
         gzip -d "$tmpdir/new.img.gz"   # produces new.img
@@ -141,7 +143,9 @@ else
         curl -LfsS --http1.1 "$sum_url" -o "$tmpdir/new.iso.sha256" || die "Download failed (sha256)"
 
         log "Verifying checksum..."
-        (cd "$tmpdir" && sha256sum -c new.iso.sha256) || die "Checksum verification failed."
+        expected=$(awk '{print $1}' "$tmpdir/new.iso.sha256")
+        actual=$(sha256sum "$tmpdir/new.iso" | awk '{print $1}')
+        [ "$expected" = "$actual" ] || die "Checksum verification failed (expected $expected, got $actual)"
 
         log "Mounting ISO..."
         mount -o loop,ro "$tmpdir/new.iso" "$src_mnt"
