@@ -137,8 +137,10 @@ cmd_create() {
                 log "Full send: $dataset → $dest_dataset..."
                 # Ensure parent dataset exists on destination
                 zfs create -p "${dest_dataset%/*}" 2>/dev/null || true
+                # No -F for full sends: -F cannot be used when receiving an
+                # encrypted stream into a new (non-existing) dataset.
                 zfs send -Rp${raw_flag} "${dataset}@${snap_name}" \
-                    | zfs receive -F "$dest_dataset"
+                    | zfs receive "$dest_dataset"
             fi
 
             # Tag backup metadata on destination
