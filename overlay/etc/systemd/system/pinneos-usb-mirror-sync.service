@@ -1,0 +1,12 @@
+[Unit]
+Description=PinneOS USB mirror sync (auto-detect mirror disk)
+# Runs after boot-success confirms the current slot is healthy.
+After=pinneos-boot-success.service
+
+[Service]
+Type=oneshot
+# Auto-detects any connected non-boot PinneOS USB and syncs both slots.
+# Exits cleanly with a log message if no mirror USB is connected.
+ExecStart=/usr/lib/homelab/usb-mirror-sync.sh
+StandardOutput=journal
+StandardError=journal

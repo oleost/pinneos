@@ -34,3 +34,8 @@ elif [ -f "$PERSIST_MOUNT/grubenv" ]; then
 else
     log "Warning: could not find grubenv to reset boot_tries"
 fi
+
+# Trigger mirror sync in background — keeps both USB sticks identical.
+# Exits silently if no mirror USB is connected; no action required from the user.
+systemctl start pinneos-usb-mirror-sync.service 2>/dev/null || true
+log "USB mirror sync triggered"

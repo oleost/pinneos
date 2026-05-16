@@ -34,5 +34,5 @@ MDNS_HOSTNAME="pinneos"
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_URL="https://api.github.com/repos/oleost/pinneos/releases/latest"
 
-# Backup USB: delay in seconds before syncing after a master update (24h)
-BACKUP_USB_SYNC_DELAY=86400
+# USB mirror sync is triggered automatically after each successful boot and on plug-in.
+# No configuration needed — both USB sticks are always kept identical.

@@ -11,7 +11,7 @@
 <nav class="tabs">
   <button class="tab-btn active" id="tab-btn-setup">Setup</button>
   <button class="tab-btn" id="tab-btn-zfs">ZFS</button>
-  <button class="tab-btn" id="tab-btn-backup">Backup</button>
+  <button class="tab-btn" id="tab-btn-backup">Mirror &amp; Backup</button>
   <button class="tab-btn" id="tab-btn-access">Access</button>
   <button class="tab-btn" id="tab-btn-update">Update</button>
 </nav>
@@ -56,18 +56,18 @@
 
     <div class="card">
       <div class="card-header card-header-flex">
-        <span>Backup USB</span>
-        <button class="btn btn-secondary" id="btn-refresh-backup-usb">↻ Refresh</button>
+        <span>USB Mirror</span>
+        <button class="btn btn-secondary" id="btn-refresh-usb-mirror">↻ Refresh</button>
       </div>
       <div class="card-body">
         <p class="hint" style="margin-bottom:14px;">
-          A second PinneOS USB (written with Etcher) kept plugged in.<br>
-          Auto-synced when connected and after updates — instant fallback if primary fails.
+          A second PinneOS USB stick — an exact mirror of this one.<br>
+          Both slots (A &amp; B) are always kept identical. GRUB can boot from either freely.
+          Synced automatically on every boot and when the mirror is plugged in.
         </p>
-        <div id="backup-usb-registered" style="margin-bottom:12px;"></div>
-        <div id="backup-usb-candidates"></div>
-        <div id="backup-usb-sync-log" class="log-area" style="display:none;margin-top:12px;"></div>
-        <div id="backup-usb-alert"></div>
+        <div id="usb-mirror-status" style="margin-bottom:12px;"></div>
+        <div id="usb-mirror-log" class="log-area" style="display:none;margin-top:12px;"></div>
+        <div id="usb-mirror-alert"></div>
       </div>
     </div>
 

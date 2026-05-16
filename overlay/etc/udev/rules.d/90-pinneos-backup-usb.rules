@@ -1,6 +1,12 @@
-# Detect PinneOS backup USB stick by UUID stored in /etc/homelab/backup-usb-uuid
-# When found, trigger the sync service.
+# PinneOS USB mirror sync — triggered when a PinneOS USB stick is plugged in.
+#
+# We match on PINNEOS_A partition add (not disk add) because at disk-add time
+# the kernel has not yet enumerated partitions, so we cannot confirm via lsblk
+# that the disk is a PinneOS USB. Matching the partition is unambiguous.
+#
+# udev-mirror-trigger.sh resolves the parent disk from the partition name and
+# starts pinneos-usb-mirror-sync@DISK.service, which runs usb-mirror-sync.sh.
+# That script verifies the target is not the boot disk before syncing.
 
-ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", \
-    PROGRAM="/usr/lib/homelab/match-backup-usb.sh %k", \
-    RUN+="/bin/systemctl start pinneos-backup-usb-sync@%k.service"
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_FS_LABEL}=="PINNEOS_A", \
+    RUN+="/usr/lib/homelab/udev-mirror-trigger.sh %k"

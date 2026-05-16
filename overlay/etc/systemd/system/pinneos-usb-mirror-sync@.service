@@ -1,0 +1,10 @@
+[Unit]
+Description=PinneOS USB mirror sync for /dev/%i
+# Requires a fully-up system — udev fires early, but rsync needs block devices settled.
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/homelab/usb-mirror-sync.sh /dev/%i
+StandardOutput=journal
+StandardError=journal

@@ -154,7 +154,7 @@ All three run as Docker containers on the apps ZFS dataset.
 - Inspired by ChromeOS, Android OTA updates, and TrueNAS.
 - Updates write to the inactive slot, then flip the boot_slot variable atomically.
 - Boot counter (boot_tries) in grubenv: if a slot fails to boot twice, GRUB reverts automatically.
-- The backup USB receives updates 24 hours after the master — intentional delay provides a rollback window.
+- Both USB sticks are equal mirrors — no "primary vs backup" designation. GRUB boots from whichever it finds first. `usb-mirror-sync.sh` keeps both slots (A and B) and grubenv identical. The A/B slot mechanism provides the rollback window — a separate backup delay is unnecessary.
 
 ### Container runtime: Docker + overlay2 on ZFS dataset
 
@@ -265,17 +265,25 @@ doesn't match on real hardware. Instead:
 
 ---
 
-## Backup USB dual-USB behaviour
+## USB mirror — dual-USB behaviour
 
-Both USBs share identical partition labels (PINNEOS_A, PINNEOS_B, PINNEOS_PERSIST, PINNEOS_EFI).
-`findfs LABEL=PINNEOS_A` is ambiguous when both are connected.
+Both USB sticks have identical partition labels (PINNEOS_A, PINNEOS_B, PINNEOS_PERSIST, PINNEOS_EFI).
+`findfs LABEL=PINNEOS_A` is ambiguous when both are connected. This is intentional by design — both
+sticks are equal mirrors and GRUB can boot from either.
 
-**Fix in `backup-usb-sync.sh`:** Resolve the active slot by tracing the persist mount
-(`/run/pinneos/persist`) back to its source device → parent disk = boot USB → find
-PINNEOS_A only on that disk. Never use `findfs` for active slot lookup.
+**Boot disk identification in scripts:** Never use `findfs` for the active slot. Instead, read the
+`archisolabel=PINNEOS_X` parameter from `/proc/cmdline` (set by archiso at boot) → `findfs` that
+specific label → `lsblk -no PKNAME` to get the parent disk. This is unambiguous regardless of how
+many PinneOS USBs are connected.
 
-**Fix in `match-backup-usb.sh`:** udev passes the disk device (`sdb`), but the stored
-UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsblk`.
+**udev trigger:** Fires on `PINNEOS_A` partition add (not disk add). At disk-add time the kernel has
+not yet enumerated partitions, so lsblk cannot confirm the disk is a PinneOS USB. Matching the
+partition event is reliable. `udev-mirror-trigger.sh` resolves the parent disk from the partition
+name and starts `pinneos-usb-mirror-sync@DISK.service`.
+
+**Sync scope:** `usb-mirror-sync.sh` syncs both Slot A and Slot B (not just the active slot), plus
+grubenv. After sync the mirror is a complete duplicate — it boots to the same slot and rolls back
+identically if the new slot fails.
 
 ---
 
@@ -285,19 +293,21 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
 - Repository structure and build system
 - Docker-based archiso build pipeline
 - GRUB A/B slot config (grub-mkimage + embedded search_label — no grub-install)
-- All systemd service units (ZFS import, update check, backup USB sync, backup timer)
-- Runtime scripts: `zfs-import.sh`, `update.sh`, `update-check.sh`, `backup-usb-sync.sh`, `backup.sh`, `restore.sh`
+- Repository structure and build system
+- Docker-based archiso build pipeline
+- GRUB A/B slot config (grub-mkimage + embedded search_label — no grub-install)
+- All systemd service units (ZFS import, update check, USB mirror sync, backup timer)
+- Runtime scripts: `zfs-import.sh`, `update.sh`, `update-check.sh`, `usb-mirror-sync.sh`, `backup.sh`, `restore.sh`
 - Backup and restore system (full and incremental, pool-to-pool and file-based)
 - Cockpit PinneOS plugin (full JS implementation in `overlay/usr/share/cockpit/pinneos/`)
 - Docker daemon config (overlay2, log rotation)
 - mDNS setup (avahi + nss-mdns for pinneos.local)
-- udev rules for backup USB detection
+- udev rules for USB mirror detection (PINNEOS_A partition add → sync)
 - `homelab` system user (uid=1000, gid=1000) — Docker app convention
 - Component inventory and weekly automated update checks (`docs/components.md`, `.github/workflows/update-check.yml`)
 - GitHub Actions CI: builds ISO+IMG.gz on tag push, creates draft release
 - **v0.1.0 tested on real hardware (ASUS UEFI PC) — boots correctly**
-- **v0.2.0** — ZFS encryption, pool health UI, backup USB serial-based identification, update.sh IMG.gz support, Cockpit UI fixes
-- **Backup USB sync tested and working** (dual-USB dual-label bug fixed)
+- **v0.2.0** — ZFS encryption, pool health UI, update.sh IMG.gz support, Cockpit UI fixes
 - SMART disk monitoring (`smartd` + `smart-alert.sh` — logs to journal, optional Gotify push)
 - ZFS scrub timer (`pinneos-zfs-scrub.timer` — monthly, all managed pools)
 - Gotify push notification integration (optional, configure via `/etc/homelab/gotify-{url,token}`)
@@ -308,11 +318,13 @@ UUID is a partition UUID (PINNEOS_A). Scan all partitions of the disk with `lsbl
   - Cockpit ZFS tab: unlock banner on boot, encrypted pool creation with passphrase, recovery key modal, encryption status per pool, passphrase change, keyfile USB management
 - **Pool health visualization** — `zpool status` output parsed and rendered in Cockpit ZFS tab: state badge, scrub status (last run, color-coded), vdev tree, run/cancel scrub buttons
 - **Release mounts button** — stops Docker and unmounts `/var/lib/docker` from ZFS apps dataset so pools can be cleanly destroyed
-- **First-boot wizard** — `/usr/lib/homelab/wizard.py` (hostname, password, backup USB). Run manually after first login: `pinneos-wizard`
+- **First-boot wizard** — `/usr/lib/homelab/wizard.py` (hostname, password). Run manually after first login: `pinneos-wizard`
 - **update.sh complete** — downloads `.img.gz` (preferred) or `.iso` (fallback), verifies SHA256, mounts via `losetup -P` (IMG) or loop (ISO), copies kernel/initramfs/squashfs to standby slot, flips grubenv atomically
 - `cockpit-zfs/` skeleton deleted — real plugin lives in `overlay/usr/share/cockpit/pinneos/`
 - **Cockpit Update tab** — GitHub version check, direct download+install, local file upload (.img.gz/.iso), reboot button
 - **A/B update flow tested end-to-end on real hardware** — v0.2.0→v0.2.1 via Cockpit Update tab
+- **Dynamic login banner** — `/etc/profile.d/pinneos-banner.sh` shows PinneOS version, hostname, IP on login; `pinneos-issue.service` writes `/etc/issue` before getty
+- **USB mirror redesign** — replaced "primary/backup with 24h delay" model with always-in-sync mirrors: `usb-mirror-sync.sh` syncs both slots (A+B) and grubenv; triggered on boot-success and USB plug-in; no registration required; GRUB boots from either USB freely
 
 ### In progress / TODO
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager
@@ -381,19 +393,23 @@ overlay/                      Baked into the live SquashFS via build.sh
     pinneos-zfs-import.service      Import ZFS pools at boot (userspace, not initramfs)
     pinneos-update-check.{service,timer}  Daily update check via GitHub API
     pinneos-backup.{service,timer}        Scheduled backup
-    pinneos-backup-usb-sync@.service      Backup USB sync (triggered by udev)
+    pinneos-usb-mirror-sync.service        USB mirror sync auto-detect (triggered by boot-success)
+    pinneos-usb-mirror-sync@.service      USB mirror sync for specific disk (triggered by udev)
+    pinneos-boot-success.service          Reset GRUB boot_tries=0, trigger mirror sync after boot
+    pinneos-issue.service                 Write /etc/issue with PinneOS version before getty
     docker.service.d/10-pinneos-zfs.conf  Makes Docker wait for ZFS import
-  etc/udev/rules.d/90-pinneos-backup-usb.rules  Detects backup USB by UUID
+  etc/udev/rules.d/90-pinneos-backup-usb.rules  Fires on PINNEOS_A partition add → starts mirror sync
+  etc/profile.d/pinneos-banner.sh         Dynamic login banner: version, hostname, IP, links
   usr/lib/homelab/
     zfs-import.sh             Find + import managed ZFS pool, bind-mount /var/lib/docker
     zfs-encrypt.sh            ZFS native encryption backend (create, unlock, passphrase, keyfile)
     update.sh                 A/B slot update: IMG.gz (preferred) or ISO, verify, write, flip grubenv
     update-check.sh           Poll GitHub Releases API, write state file if update available
-    backup-usb-sync.sh        Rsync active slot to backup USB
-    match-backup-usb.sh       udev helper: returns 0 if device matches registered backup UUID
+    usb-mirror-sync.sh        Sync both slots (A+B) and grubenv from boot USB to mirror USB
+    udev-mirror-trigger.sh    udev helper: resolves parent disk from partition, starts mirror service
     backup.sh                 ZFS send/receive backup (create / list / prune)
     restore.sh                ZFS receive restore (list / run), works in recovery mode
-    wizard.py                 First-boot console wizard (hostname, password, backup USB)
+    wizard.py                 First-boot console wizard (hostname, password)
 
 grub/grub.cfg.template        Reference template for the A/B runtime GRUB config
                               (separate from the live-ISO GRUB config in build/profile/grub/)

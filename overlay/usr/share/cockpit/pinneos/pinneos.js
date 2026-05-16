@@ -1118,53 +1118,24 @@ function runRestore() {
   });
 }
 
-// ── Backup USB (Setup tab) ────────────────────────────────────────────────────
+// ── USB Mirror (Setup tab) ────────────────────────────────────────────────────
+//
+// Both USB sticks are equal mirrors — no "primary vs backup" distinction.
+// usb-mirror-sync.sh syncs Slot A, Slot B and grubenv from the boot USB to
+// any other connected PinneOS USB. No registration required.
 
-var BACKUP_SERIAL_FILE = '/etc/homelab/backup-usb-serial';
-
-function loadBackupUsb() {
-  cockpit.spawn(['/usr/bin/cat', BACKUP_SERIAL_FILE], {err: 'message'})
-    .then(function(content) {
-      var serial = (content || '').trim();
-      renderBackupUsbRegistered(serial);
-      scanBackupUsbCandidates(serial);
-    })
-    .catch(function() {
-      renderBackupUsbRegistered('');
-      scanBackupUsbCandidates('');
-    });
-}
-
-function renderBackupUsbRegistered(serial) {
-  var el = document.getElementById('backup-usb-registered');
-  if (serial) {
-    el.innerHTML =
-      '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
-        '<span><strong>Registered</strong> — Serial: <code>' + esc(serial) + '</code></span>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0">' +
-          '<button class="btn btn-primary" id="btn-sync-backup-usb">Sync now</button>' +
-          '<button class="btn btn-danger-sm" id="btn-unregister-backup-usb">Remove</button>' +
-        '</div>' +
-      '</div>';
-    document.getElementById('btn-sync-backup-usb').addEventListener('click', syncBackupUsbNow);
-    document.getElementById('btn-unregister-backup-usb').addEventListener('click', unregisterBackupUsb);
-  } else {
-    el.innerHTML = '<p class="hint">No backup USB registered.</p>';
-  }
-}
-
-function scanBackupUsbCandidates(registeredSerial) {
-  var wrap = document.getElementById('backup-usb-candidates');
-  wrap.innerHTML = '<p class="empty-text">Scanning for PinneOS USB sticks…</p>';
+function loadUsbMirror() {
+  var wrap = document.getElementById('usb-mirror-status');
+  wrap.innerHTML = '<p class="empty-text">Scanning for mirror USB…</p>';
   findBootDisk()
-    .then(function(bootDisk) { return findBackupCandidates(bootDisk); })
-    .then(function(candidates) { renderBackupUsbCandidates(candidates, registeredSerial || ''); })
-    .catch(function() { renderBackupUsbCandidates([], ''); });
+    .then(function(bootDisk) { return findMirrorDisks(bootDisk); })
+    .then(function(mirrors)  { renderUsbMirrorStatus(mirrors); })
+    .catch(function()        { renderUsbMirrorStatus([]); });
 }
 
+// Identify the boot disk by tracing the persist mount back to its parent.
+// Avoids findfs LABEL=PINNEOS_A ambiguity when two PinneOS USBs are connected.
 function findBootDisk() {
-  // Use the persist mount to identify the boot disk unambiguously.
-  // findfs LABEL=PINNEOS_A is ambiguous when both USBs share identical labels.
   return cockpit.spawn(
     ['/usr/bin/findmnt', '-n', '-o', 'SOURCE', '/run/pinneos/persist'],
     {err: 'message'}
@@ -1174,108 +1145,70 @@ function findBootDisk() {
   .catch(function() { return ''; });
 }
 
-function findBackupCandidates(bootDisk) {
+// Return all non-boot disks that have a PINNEOS_A partition (i.e. PinneOS USBs).
+function findMirrorDisks(bootDisk) {
   return cockpit.spawn(
     ['/usr/bin/lsblk', '-J', '-b', '-o', 'NAME,SIZE,MODEL,TYPE,LABEL'],
     {err: 'message'}
   ).then(function(output) {
     var data = JSON.parse(output);
-    var diskCandidates = [];
+    var mirrors = [];
     (data.blockdevices || []).forEach(function(dev) {
       if (dev.type !== 'disk') return;
       var disk = '/dev/' + dev.name;
       if (disk === bootDisk) return;
       var hasPinneosA = (dev.children || []).some(function(c) { return c.label === 'PINNEOS_A'; });
       if (!hasPinneosA) return;
-      diskCandidates.push({ disk: disk, model: (dev.model || 'Unknown').trim(), size: dev.size });
+      mirrors.push({ disk: disk, model: (dev.model || 'Unknown').trim(), size: dev.size });
     });
-    // Fetch serial numbers sequentially — cockpit spawn chains don't unwrap native Promise.all
-    var initial = cockpit.spawn(['/bin/true'], {err: 'message'}).then(function() { return []; });
-    return diskCandidates.reduce(function(chain, c) {
-      return chain.then(function(results) {
-        return cockpit.spawn(
-          ['/usr/bin/udevadm', 'info', '--query=property', c.disk],
-          {err: 'message'}
-        ).then(function(info) {
-          var serial = '';
-          info.split('\n').forEach(function(line) {
-            if (line.indexOf('ID_SERIAL_SHORT=') === 0)
-              serial = line.slice('ID_SERIAL_SHORT='.length).trim();
-          });
-          results.push({ disk: c.disk, serial: serial || c.disk, model: c.model, size: c.size });
-          return results;
-        }).catch(function() {
-          results.push({ disk: c.disk, serial: c.disk, model: c.model, size: c.size });
-          return results;
-        });
-      });
-    }, initial);
+    return mirrors;
   });
 }
 
-function renderBackupUsbCandidates(candidates, registeredSerial) {
-  var wrap = document.getElementById('backup-usb-candidates');
-  if (!candidates.length) {
+function renderUsbMirrorStatus(mirrors) {
+  var wrap = document.getElementById('usb-mirror-status');
+  if (!mirrors.length) {
     wrap.innerHTML =
-      '<p class="hint">No other PinneOS USB detected. ' +
-      'Write the .img to a second USB with Etcher, plug it in, then click ↻ Refresh.</p>';
+      '<div class="alert alert-warning" style="margin-bottom:0">' +
+        'No mirror USB detected. ' +
+        'Write the .img.gz to a second USB with Etcher, plug it in, then click ↻ Refresh.' +
+      '</div>';
     return;
   }
-  var html = '<p style="margin:0 0 8px;font-weight:600">Detected PinneOS USBs:</p>';
-  candidates.forEach(function(c) {
-    var isRegistered = registeredSerial && c.serial === registeredSerial;
-    html += '<div class="disk-item" style="justify-content:space-between">' +
-      '<div>' +
-        '<span class="disk-name">' + esc(c.disk) + '</span> ' +
-        '<span class="disk-meta">' + esc(c.model) + ' — ' + fmtBytes(c.size) + '</span>' +
-      '</div>' +
-      (isRegistered
-        ? '<span class="badge badge-ok">✓ Registered</span>'
-        : '<button class="btn btn-primary" data-action="register-backup" data-serial="' + esc(c.serial) + '">Register</button>'
-      ) +
+  var html = '';
+  mirrors.forEach(function(m) {
+    html +=
+      '<div class="alert alert-success" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<div>' +
+          '<strong>Mirror connected</strong> — ' +
+          '<span class="disk-name">' + esc(m.disk) + '</span> ' +
+          '<span class="disk-meta">' + esc(m.model) + ' ' + fmtBytes(m.size) + '</span>' +
+        '</div>' +
+        '<button class="btn btn-primary" data-action="sync-mirror" data-disk="' + esc(m.disk) + '">Sync now</button>' +
       '</div>';
   });
   wrap.innerHTML = html;
 }
 
-function registerBackupUsb(serial) {
-  cockpit.spawn(['/usr/bin/bash', '-c', 'printf "%s\n" "$1" > ' + BACKUP_SERIAL_FILE, '--', serial],
-    {superuser: 'try', err: 'message'})
-    .then(function() {
-      showAlert('backup-usb-alert', 'success', 'Backup USB registered.');
-      loadBackupUsb();
-    })
-    .catch(function(err) {
-      showAlert('backup-usb-alert', 'danger', String(err.message || err));
-    });
-}
-
-function unregisterBackupUsb() {
-  if (!window.confirm('Remove backup USB registration?')) return;
-  cockpit.spawn(
-    ['/usr/bin/rm', '-f', BACKUP_SERIAL_FILE, '/etc/homelab/backup-usb-uuid'],
-    {superuser: 'try', err: 'message'}
-  ).then(function() {
-      showAlert('backup-usb-alert', 'success', 'Registration removed.');
-      loadBackupUsb();
-    })
-    .catch(function(err) {
-      showAlert('backup-usb-alert', 'danger', String(err.message || err));
-    });
-}
-
-function syncBackupUsbNow() {
-  var logEl = document.getElementById('backup-usb-sync-log');
+function syncMirrorNow(disk) {
+  var logEl = document.getElementById('usb-mirror-log');
   logEl.style.display = '';
-  logEl.textContent = 'Syncing backup USB…\n';
-  document.getElementById('btn-sync-backup-usb').disabled = true;
-  cockpit.spawn(['/usr/lib/homelab/backup-usb-sync.sh'], {superuser: 'try', err: 'message'})
-    .stream(function(data) { logEl.textContent += data; logEl.scrollTop = logEl.scrollHeight; })
-    .then(function() { logEl.textContent += '\n✓ Sync complete.'; })
-    .catch(function(err) { logEl.textContent += '\n✗ Error: ' + String(err.message || err); })
-    .finally(function() {
-      document.getElementById('btn-sync-backup-usb').disabled = false;
-    });
+  logEl.textContent = 'Syncing ' + disk + '…\n';
+  clearAlert('usb-mirror-alert');
+
+  var proc = cockpit.spawn(
+    ['/usr/lib/homelab/usb-mirror-sync.sh', disk],
+    {superuser: 'try', err: 'message'}
+  );
+  proc.stream(function(data) { logEl.textContent += data; logEl.scrollTop = logEl.scrollHeight; });
+  proc.then(function() {
+    logEl.textContent += '\n✓ Mirror sync complete.';
+    showAlert('usb-mirror-alert', 'success', 'Mirror sync complete.');
+  });
+  proc.catch(function(err) {
+    logEl.textContent += '\n✗ Error: ' + String(err.message || err);
+    showAlert('usb-mirror-alert', 'danger', String(err.message || err));
+  });
 }
 
 // ── Update tab ────────────────────────────────────────────────────────────────
@@ -1534,19 +1467,19 @@ document.getElementById('dataset-pool-select').addEventListener('change', functi
   loadDatasets(this.value);
 });
 
-document.getElementById('backup-usb-candidates').addEventListener('click', function(e) {
+document.getElementById('usb-mirror-status').addEventListener('click', function(e) {
   var btn = e.target.closest('[data-action]');
   if (!btn) return;
-  if (btn.dataset.action === 'register-backup') registerBackupUsb(btn.dataset.serial);
+  if (btn.dataset.action === 'sync-mirror') syncMirrorNow(btn.dataset.disk);
 });
 
-document.getElementById('btn-refresh-backup-usb').addEventListener('click', function() {
-  clearAlert('backup-usb-alert');
-  loadBackupUsb();
+document.getElementById('btn-refresh-usb-mirror').addEventListener('click', function() {
+  clearAlert('usb-mirror-alert');
+  loadUsbMirror();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 switchTab('setup');
 loadHostname();
-loadBackupUsb();
+loadUsbMirror();
