@@ -111,16 +111,22 @@ cmd_create() {
         # Skip datasets that don't exist
         zfs list "$dataset" >/dev/null 2>&1 || { log "Skipping $dataset (not found)"; continue; }
 
-        log "Snapshotting $dataset..."
-        zfs snapshot -r "${dataset}@${snap_name}"
-
         local raw_flag
         raw_flag=$(send_raw_flag "$dataset")
 
         if dest_is_zfs "$dest"; then
             local dest_dataset="${dest}/${dataset##*/}"
+
+            # Refuse to back up a dataset to itself
+            [ "$dest_dataset" = "$dataset" ] && \
+                die "Backup destination '$dest' resolves to the same dataset as source. Use a different pool."
+
+            # Find last common snapshot BEFORE creating the new one
             local common
             common=$(last_common_snapshot "$dataset" "$dest_dataset")
+
+            log "Snapshotting $dataset..."
+            zfs snapshot -r "${dataset}@${snap_name}"
 
             if [ -n "$common" ]; then
                 log "Incremental send: $dataset (@$common → @$snap_name)..."
@@ -141,6 +147,8 @@ cmd_create() {
 
         else
             # File-based backup (zfs send → compressed file)
+            log "Snapshotting $dataset..."
+            zfs snapshot -r "${dataset}@${snap_name}"
             mkdir -p "$dest"
             local out_file="${dest}/${dataset##*/}-${snap_name}.zfs.zst"
             log "File send: $dataset → $out_file..."
