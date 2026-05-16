@@ -1457,9 +1457,14 @@ function initPoolPicker(inputId, opts) {
   // Pre-select a sensible default when input is empty
   fetchZfsPools().then(function(pools) {
     if (input.value) return;
-    if (opts.preselect === 'managed' && pools.managed.length) input.value = pools.managed[0];
-    else if (opts.preselect === 'other' && pools.other.length)   input.value = pools.other[0];
-    else if (opts.preselect === 'other' && pools.managed.length) input.value = pools.managed[0];
+    if (opts.preselect === 'managed' && pools.managed.length) {
+      input.value = pools.managed[0];
+    } else if (opts.preselect === 'other' && pools.other.length) {
+      input.value = pools.other[0];
+    } else if (opts.preselect === 'other' && pools.managed.length) {
+      // No dedicated backup pool — suggest a sub-dataset on the managed pool
+      input.value = pools.managed[0] + (opts.backupSuffix || '/backups');
+    }
   }).catch(function() {});
 
   function renderDrop(pools) {
@@ -1496,7 +1501,13 @@ function initPoolPicker(inputId, opts) {
   drop.addEventListener('click', function(e) {
     var item = e.target.closest('[data-value]');
     if (!item) return;
-    input.value = item.dataset.value;
+    var val = item.dataset.value;
+    // For backup destinations: if user picks a managed pool, append /backups
+    // so the send targets tank/backups/system instead of tank/system (same as source).
+    if (opts.backupSuffix && item.querySelector('.pool-picker-tag.managed')) {
+      val = val + opts.backupSuffix;
+    }
+    input.value = val;
     drop.style.display = 'none';
     input.dispatchEvent(new Event('input'));
     input.dispatchEvent(new Event('change'));
@@ -1661,9 +1672,9 @@ loadUsbMirror();
 // Pool pickers — Backup tab
 // backup-dest prefers non-managed (a dedicated backup pool) but falls back to any pool.
 // restore-dest defaults to the managed pool (where data is restored to).
-initPoolPicker('backup-dest',      { preselect: 'other' });
-initPoolPicker('backup-list-dest', { preselect: 'other' });
-initPoolPicker('restore-source',   { preselect: 'other' });
+initPoolPicker('backup-dest',      { preselect: 'other', backupSuffix: '/backups' });
+initPoolPicker('backup-list-dest', { preselect: 'other', backupSuffix: '/backups' });
+initPoolPicker('restore-source',   { preselect: 'other', backupSuffix: '/backups' });
 initPoolPicker('restore-dest',     { preselect: 'managed', filter: 'managed' });
 initSnapshotPicker('restore-snapshot', 'restore-source');
 
