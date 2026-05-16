@@ -135,7 +135,9 @@ for slot in A B; do
         /mnt/pinneos-slot-src/ /mnt/pinneos-slot-dst/
     sync
 
-    umount /mnt/pinneos-slot-src /mnt/pinneos-slot-dst
+    # Lazy fallback: kernel may hold a brief ref after rsync exits
+    umount /mnt/pinneos-slot-src 2>/dev/null || umount -l /mnt/pinneos-slot-src
+    umount /mnt/pinneos-slot-dst 2>/dev/null || umount -l /mnt/pinneos-slot-dst
     info "PINNEOS_${slot} synced"
 done
 
