@@ -26,6 +26,12 @@ log()  { logger -t pinneos-restore "$*" 2>/dev/null; echo "[restore] $*"; }
 warn() { echo "[restore] WARNING: $*"; }
 die()  { echo "[restore] ERROR: $*" >&2; exit 1; }
 
+send_raw_flag() {
+    local enc
+    enc=$(zfs get -H -o value encryption "$1" 2>/dev/null)
+    [ "$enc" != "off" ] && [ "$enc" != "-" ] && echo "w" || true
+}
+
 usage() {
     cat << 'EOF'
 Usage:
@@ -164,7 +170,9 @@ cmd_run() {
                 warn "$dst_ds already exists and will be overwritten."
             fi
 
-            zfs send -Rp "${src_ds}@${snap}" | zfs receive -F "$dst_ds"
+            local raw_flag
+            raw_flag=$(send_raw_flag "$src_ds")
+            zfs send -Rp${raw_flag} "${src_ds}@${snap}" | zfs receive -F "$dst_ds"
 
         else
             # File-based source
