@@ -29,23 +29,26 @@ _is_pinneos_disk() {
     lsblk -lpno LABEL "$1" 2>/dev/null | grep -q "^PINNEOS_A$"
 }
 
-# Returns the mtime (epoch seconds) of airootfs.sfs on Slot A of the given disk.
-# Returns 0 if the disk or file cannot be read.
+# Returns the newest airootfs.sfs mtime (epoch seconds) across BOTH slots on the
+# given disk. Updates write to the standby slot (A or B alternately), so we must
+# check both to detect which USB has the most recent content.
 _slot_mtime() {
-    local disk="$1" slot_dev mnt mtime
-    slot_dev=$(lsblk -lpno NAME,LABEL "/dev/$disk" 2>/dev/null \
-        | awk '$2=="PINNEOS_A"{print $1; exit}')
-    [ -n "$slot_dev" ] || { echo 0; return; }
-    mnt=$(mktemp -d)
-    if ! mount -o ro,noload "$slot_dev" "$mnt" >/dev/null 2>&1; then
-        rmdir "$mnt"
-        echo 0
-        return
-    fi
-    mtime=$(stat -c %Y "$mnt/$SFS_PATH" 2>/dev/null || echo 0)
-    umount "$mnt" >/dev/null 2>&1 || true
-    rmdir "$mnt" 2>/dev/null || true
-    echo "${mtime:-0}"
+    local disk="$1" slot_dev mnt mtime best=0
+    for slot in A B; do
+        slot_dev=$(lsblk -lpno NAME,LABEL "/dev/$disk" 2>/dev/null \
+            | awk -v l="PINNEOS_${slot}" '$2==l{print $1; exit}')
+        [ -n "$slot_dev" ] || continue
+        mnt=$(mktemp -d)
+        if ! mount -o ro,noload "$slot_dev" "$mnt" >/dev/null 2>&1; then
+            rmdir "$mnt"
+            continue
+        fi
+        mtime=$(stat -c %Y "$mnt/$SFS_PATH" 2>/dev/null || echo 0)
+        umount "$mnt" >/dev/null 2>&1 || true
+        rmdir "$mnt" 2>/dev/null || true
+        [ "${mtime:-0}" -gt "$best" ] && best="${mtime:-0}"
+    done
+    echo "$best"
 }
 
 # ── Find all PinneOS disks ────────────────────────────────────────────────────
