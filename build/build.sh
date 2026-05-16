@@ -54,7 +54,7 @@ IMG_OUT="${IMG_RAW}"
 #   p2 PINNEOS_EFI:    3–515 MiB (512 MiB, FAT32)
 #   p3 PINNEOS_A:    515–2563 MiB (2048 MiB, ext4)
 #   p4 PINNEOS_B:   2563–4611 MiB (2048 MiB, ext4)
-#   p5 PINNEOS_PERSIST: 4611 MiB → end (689 MiB, F2FS)
+#   p5 PINNEOS_PERSIST: 4611 MiB → end (688 MiB, ext4 — GPT footer takes last MiB)
 MiB=$((1024 * 1024))
 
 echo "    Allocating 5300 MiB raw image..."
@@ -129,7 +129,7 @@ parted -s "${DISK_LOOP}" \
 EFI_LOOP=$(    attach_loop "${IMG_RAW}" -o $((   3 * MiB)) --sizelimit $((  512 * MiB)))
 SLOTA_LOOP=$(  attach_loop "${IMG_RAW}" -o $((  515 * MiB)) --sizelimit $((2048 * MiB)))
 SLOTB_LOOP=$(  attach_loop "${IMG_RAW}" -o $((2563 * MiB)) --sizelimit $((2048 * MiB)))
-PERSIST_LOOP=$(attach_loop "${IMG_RAW}" -o $((4611 * MiB)) --sizelimit $((  689 * MiB)))
+PERSIST_LOOP=$(attach_loop "${IMG_RAW}" -o $((4611 * MiB)) --sizelimit $((  688 * MiB)))
 
 echo "    Formatting partitions..."
 mkfs.fat  -F32 -n PINNEOS_EFI  "${EFI_LOOP}"

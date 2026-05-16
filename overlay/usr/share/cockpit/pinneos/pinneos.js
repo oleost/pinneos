@@ -1239,16 +1239,25 @@ function loadUsbMirror() {
     .catch(function()        { renderUsbMirrorStatus([]); });
 }
 
-// Identify the boot disk by tracing the persist mount back to its parent.
-// Avoids findfs LABEL=PINNEOS_A ambiguity when two PinneOS USBs are connected.
+// Identify the boot disk. Uses PINNEOS_PERSIST label (unique per USB, no ambiguity)
+// with fallback to /proc/cmdline archisolabel if persist is not yet mounted.
 function findBootDisk() {
   return cockpit.spawn(
     ['/usr/bin/findmnt', '-n', '-o', 'SOURCE', '/run/pinneos/persist'],
     {err: 'message'}
   ).then(function(part) {
-    return cockpit.spawn(['/usr/bin/lsblk', '-no', 'PKNAME', part.trim()], {err: 'message'});
+    part = part.trim();
+    if (!part) throw new Error('not mounted');
+    return cockpit.spawn(['/usr/bin/lsblk', '-no', 'PKNAME', part], {err: 'message'});
   }).then(function(out) { return '/dev/' + out.trim(); })
-  .catch(function() { return ''; });
+  .catch(function() {
+    return cockpit.spawn(['/bin/sh', '-c',
+      'label=$(grep -o "archisolabel=[^ ]*" /proc/cmdline | cut -d= -f2); ' +
+      'blkid -L "PINNEOS_PERSIST" 2>/dev/null | head -1 | xargs -I{} lsblk -no PKNAME {} 2>/dev/null | head -1'
+    ], {err: 'message'})
+    .then(function(out) { return out.trim() ? '/dev/' + out.trim() : ''; })
+    .catch(function() { return ''; });
+  });
 }
 
 // Return all non-boot disks that have a PINNEOS_A partition (i.e. PinneOS USBs).
