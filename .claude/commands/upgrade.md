@@ -160,13 +160,19 @@ Exact list of files to edit if the user approves the recommended upgrades.
 
 ---
 
-## Step 6 — Wait for approval
+## Step 6 — Get approval to make file changes
 
-After presenting the report, ask the user:
+Ask the user:
 
 > "Shall I proceed with the recommended upgrades listed in section 5d? You can also ask me to include or exclude specific items."
 
-Do **not** modify any files until the user confirms. When approved:
+Do **not** modify any files until the user confirms.
+
+---
+
+## Step 7 — Make file changes
+
+When the user approves:
 
 1. Make all file changes
 2. Keep both compose files in sync (`overlay/etc/homelab/panel/` and `stacks/panel/` if present)
@@ -175,4 +181,39 @@ Do **not** modify any files until the user confirms. When approved:
    - Minor (0.x.0): new components or significant changes to existing ones
    - Major (x.0.0): breaking changes requiring user action on existing installs
 4. Update the version history table in `docs/components.md` with exact versions
-5. Commit, tag, and push — CI will build the release automatically
+
+Do **not** commit yet. Show a summary of what was changed.
+
+---
+
+## Step 8 — Live server test (optional but recommended)
+
+Ask the user:
+
+> "Do you have a live PinneOS server available to test these changes on before releasing? If yes, provide the IP address (or confirm it's the usual one) and I'll deploy and verify before tagging the release."
+
+**If the user says yes:**
+
+1. SCP the changed files to the live server (use `sshpass -p pinneos` and the provided IP, user `root`)
+2. For systemd unit changes: run `systemctl daemon-reload` on the server
+3. For compose file changes: check whether the running containers need to be recreated (`docker compose up -d` in the panel stack directory)
+4. Verify the change works — for each file changed, describe what to check and check it:
+   - Service file changes → `systemctl status <service>`
+   - compose changes → `docker ps`, check container is running with new env vars
+   - Script changes → run the script with a safe/dry invocation if possible
+5. Report the verification result to the user before proceeding
+
+**If the user says no (or there's no live server):**
+
+Note that the changes are untested on real hardware and proceed to Step 9.
+
+---
+
+## Step 9 — Commit, tag, and release
+
+Only after the user confirms they are happy (with or without live testing):
+
+1. Commit all changes with a clear message summarising what was upgraded
+2. Tag with the new version: `git tag vX.Y.Z`
+3. Push branch and tag: `git push origin main && git push origin vX.Y.Z`
+4. CI will build and publish the release automatically
