@@ -328,6 +328,8 @@ identically if the new slot fails.
 - **Built-in file sharing** — SMB and NFS run as host daemons (samba + nfs-utils packages); Cockpit Shares tab for add/remove/status; no Docker required
 - **Cockpit Apps tab** — catalog of 11 Docker Compose apps; Install + Install & Start buttons; installed detection via `/opt/stacks/<id>/`; pool placeholder `{{POOL}}` substituted at install; `docs/apps.json` machine-readable companion to `docs/apps.md`
 - **update.sh mount-order fix** — target slot partition resolved BEFORE loop device setup to prevent PINNEOS_* label ambiguity causing read-only mounts (v0.3.1)
+- **grubenv moved to EFI partition** — GRUB cannot read F2FS persist; grubenv now on FAT32 PINNEOS_EFI. A/B rollback now works correctly. grub.cfg baked into SquashFS and updated by update.sh on each slot write (v0.3.2)
+- **Mirror sync delayed until confirmed boot** — mirror USB no longer updated immediately after an update; boot-success.service syncs only after new slot proves it boots correctly, keeping mirror as rollback fallback (v0.3.3)
 
 ### In progress / TODO
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager

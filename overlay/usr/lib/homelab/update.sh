@@ -277,9 +277,7 @@ fi
 grub-editenv "$GRUBENV" set boot_slot="$target" boot_tries=0
 log "Slot switched to $target. Reboot to apply update."
 
-# 6. Sync mirror USB now — before reboot — so both USBs have the new slot.
-# Without this, GRUB might pick the mirror USB (identical label) and boot the
-# old version. We run sync in the foreground so it completes before reboot.
-log "Syncing mirror USB (if connected)..."
-/usr/lib/homelab/usb-mirror-sync.sh 2>/dev/null && log "Mirror sync complete." \
-    || log "No mirror USB connected — skipping sync."
+# Mirror sync is intentionally NOT done here.
+# usb-mirror-sync.sh is triggered by pinneos-boot-success.service AFTER the new
+# slot proves it boots correctly. This means the mirror keeps the last known-good
+# version until the update is confirmed — a natural rollback window.

@@ -2,7 +2,7 @@
 # This file is baked into the image at build time.
 # Per-installation overrides live on the ZFS system dataset.
 
-PINNEOS_VERSION="0.3.2"
+PINNEOS_VERSION="0.3.3"
 
 # ZFS import strategy: scan (reliable) or cache (faster but stale-prone)
 ZFS_IMPORT_MODE=scan
