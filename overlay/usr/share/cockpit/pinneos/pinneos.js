@@ -1397,6 +1397,188 @@ function runUpdateFromGithub() {
   });
 }
 
+// ── Pool / path picker ────────────────────────────────────────────────────────
+//
+// Wraps any existing text input with a browse dropdown listing available ZFS
+// pools, categorised as managed (pinneos:managed=yes) or other.
+//
+// Usage:
+//   initPoolPicker('input-id', opts)
+//     opts.preselect : 'managed' | 'other'  — auto-fill when input is empty
+//     opts.filter    : 'managed' | 'other'  — show only this category
+//
+//   initSnapshotPicker('snap-input-id', 'source-input-id')
+//     Shows snapshots found at the source pool via backup.sh list.
+
+var _poolCache = null;
+
+function clearPoolCache() { _poolCache = null; }
+
+function fetchZfsPools() {
+  if (_poolCache) {
+    return cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return _poolCache; });
+  }
+  return cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {err: 'message'})
+    .then(function(out) {
+      var pools = out.trim().split('\n').filter(Boolean);
+      var managed = [], other = [];
+      var chain = cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return null; });
+      pools.forEach(function(pool) {
+        chain = chain.then(function() {
+          return cockpit.spawn(
+            ['/usr/bin/zfs', 'get', '-H', '-o', 'value', 'pinneos:managed', pool],
+            {err: 'ignore'}
+          ).then(function(v) {
+            if (v.trim() === 'yes') managed.push(pool);
+            else other.push(pool);
+          }).catch(function() { other.push(pool); });
+        });
+      });
+      return chain.then(function() {
+        _poolCache = { managed: managed, other: other };
+        return _poolCache;
+      });
+    });
+}
+
+function initPoolPicker(inputId, opts) {
+  opts = opts || {};
+  var input = document.getElementById(inputId);
+  if (!input) return;
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'pool-picker';
+  input.parentNode.replaceChild(wrapper, input);
+  wrapper.appendChild(input);
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-secondary pool-picker-btn';
+  btn.setAttribute('aria-label', 'Browse ZFS pools');
+  btn.textContent = '▾';
+  wrapper.appendChild(btn);
+
+  var drop = document.createElement('div');
+  drop.className = 'pool-picker-drop';
+  drop.style.display = 'none';
+  wrapper.appendChild(drop);
+
+  // Pre-select a sensible default when input is empty
+  fetchZfsPools().then(function(pools) {
+    if (input.value) return;
+    if (opts.preselect === 'managed' && pools.managed.length) input.value = pools.managed[0];
+    else if (opts.preselect === 'other'   && pools.other.length)   input.value = pools.other[0];
+  }).catch(function() {});
+
+  function renderDrop(pools) {
+    var groups = opts.filter === 'managed' ? [{ label: 'Managed pool', items: pools.managed, tag: 'managed' }]
+               : opts.filter === 'other'   ? [{ label: 'Other pools',   items: pools.other,   tag: '' }]
+               : [ { label: 'Managed pool', items: pools.managed, tag: 'managed' },
+                   { label: 'Other pools',  items: pools.other,   tag: '' } ];
+    var html = '';
+    groups.forEach(function(g) {
+      if (!g.items.length) return;
+      html += '<div class="pool-picker-sep">' + esc(g.label) + '</div>';
+      g.items.forEach(function(p) {
+        var sel = input.value === p ? ' selected' : '';
+        var tag = g.tag ? '<span class="pool-picker-tag ' + g.tag + '">' + g.tag + '</span>' : '';
+        html += '<div class="pool-picker-item' + sel + '" data-value="' + esc(p) + '">' +
+                  '<span>' + esc(p) + '</span>' + tag +
+                '</div>';
+      });
+    });
+    if (!html) html = '<div class="pool-picker-item empty">No ZFS pools found</div>';
+    drop.innerHTML = html;
+  }
+
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (drop.style.display !== 'none') { drop.style.display = 'none'; return; }
+    drop.innerHTML = '<div class="pool-picker-item empty">Loading…</div>';
+    drop.style.display = '';
+    fetchZfsPools().then(renderDrop).catch(function() {
+      drop.innerHTML = '<div class="pool-picker-item" style="color:#c9190b">Failed to load pools</div>';
+    });
+  });
+
+  drop.addEventListener('click', function(e) {
+    var item = e.target.closest('[data-value]');
+    if (!item) return;
+    input.value = item.dataset.value;
+    drop.style.display = 'none';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('change'));
+  });
+
+  document.addEventListener('click', function() { drop.style.display = 'none'; });
+}
+
+function initSnapshotPicker(snapInputId, sourceInputId) {
+  var snapInput   = document.getElementById(snapInputId);
+  var sourceInput = document.getElementById(sourceInputId);
+  if (!snapInput || !sourceInput) return;
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'pool-picker';
+  snapInput.parentNode.replaceChild(wrapper, snapInput);
+  wrapper.appendChild(snapInput);
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-secondary pool-picker-btn';
+  btn.setAttribute('aria-label', 'Browse snapshots');
+  btn.textContent = '▾';
+  wrapper.appendChild(btn);
+
+  var drop = document.createElement('div');
+  drop.className = 'pool-picker-drop';
+  drop.style.display = 'none';
+  wrapper.appendChild(drop);
+
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (drop.style.display !== 'none') { drop.style.display = 'none'; return; }
+    var source = sourceInput.value.trim();
+    if (!source) {
+      drop.innerHTML = '<div class="pool-picker-item empty">Enter a source pool first</div>';
+      drop.style.display = '';
+      return;
+    }
+    drop.innerHTML = '<div class="pool-picker-item empty">Loading snapshots…</div>';
+    drop.style.display = '';
+    cockpit.spawn(
+      ['/usr/lib/homelab/backup.sh', 'list', '--dest', source],
+      {superuser: 'try', err: 'message'}
+    ).then(function(output) {
+      var snaps = output.trim().split('\n')
+        .map(function(l) { return l.trim(); })
+        .filter(function(l) { return l.indexOf('pinneos-backup-') !== -1; })
+        .reverse();
+      if (!snaps.length) {
+        drop.innerHTML = '<div class="pool-picker-item empty">No backups found at "' + esc(source) + '"</div>';
+        return;
+      }
+      var html = '<div class="pool-picker-sep">Available snapshots (newest first)</div>';
+      snaps.forEach(function(s) {
+        var sel = snapInput.value === s ? ' selected' : '';
+        html += '<div class="pool-picker-item' + sel + '" data-value="' + esc(s) + '">' + esc(s) + '</div>';
+      });
+      drop.innerHTML = html;
+    }).catch(function(err) {
+      drop.innerHTML = '<div class="pool-picker-item" style="color:#c9190b">' + esc(String(err.message || err)) + '</div>';
+    });
+  });
+
+  drop.addEventListener('click', function(e) {
+    var item = e.target.closest('[data-value]');
+    if (!item) return;
+    snapInput.value = item.dataset.value;
+    drop.style.display = 'none';
+  });
+
+  document.addEventListener('click', function() { drop.style.display = 'none'; });
+}
+
 // ── Wire up static controls ───────────────────────────────────────────────────
 
 document.getElementById('tab-btn-setup').addEventListener('click',   function() { switchTab('setup');  });
@@ -1483,3 +1665,23 @@ document.getElementById('btn-refresh-usb-mirror').addEventListener('click', func
 switchTab('setup');
 loadHostname();
 loadUsbMirror();
+
+// Pool pickers — Backup tab
+// backup-dest and backup-list-dest default to the first non-managed pool (the backup target).
+// restore-dest defaults to the managed pool (where data is restored to).
+initPoolPicker('backup-dest',      { preselect: 'other',   filter: 'other' });
+initPoolPicker('backup-list-dest', { preselect: 'other',   filter: 'other' });
+initPoolPicker('restore-source',   { preselect: 'other',   filter: 'other' });
+initPoolPicker('restore-dest',     { preselect: 'managed', filter: 'managed' });
+initSnapshotPicker('restore-snapshot', 'restore-source');
+
+// Keep backup-list-dest in sync with backup-dest (same destination, usually)
+document.getElementById('backup-dest').addEventListener('change', function() {
+  var listEl = document.getElementById('backup-list-dest');
+  if (!listEl.value) listEl.value = this.value;
+});
+
+// Invalidate pool cache after a pool is created so pickers reflect the new pool
+document.getElementById('btn-create-pool').addEventListener('click', function() {
+  clearPoolCache();
+}, true);

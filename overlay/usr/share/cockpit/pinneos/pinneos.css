@@ -161,3 +161,36 @@ tr:last-child td { border-bottom: none; }
 .encrypt-fields {
   border-left: 3px solid #0066cc; padding-left: 14px; margin: 12px 0 4px;
 }
+
+/* ── Pool / path picker combo ─────────────────────────────────────────────── */
+.pool-picker {
+  position: relative; display: inline-flex; gap: 4px;
+  max-width: 380px; width: 100%;
+}
+.pool-picker input[type=text] { flex: 1; max-width: none; width: 0; min-width: 0; }
+.pool-picker-btn { padding: 5px 10px; flex-shrink: 0; line-height: 1; }
+
+.pool-picker-drop {
+  position: absolute; top: calc(100% + 3px); left: 0; right: 0;
+  background: #fff; border: 1px solid #8a8d90; border-radius: 4px;
+  z-index: 300; max-height: 240px; overflow-y: auto;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.pool-picker-sep {
+  padding: 5px 12px 3px; font-size: 11px; font-weight: 700; color: #6a6e73;
+  text-transform: uppercase; letter-spacing: .06em;
+  background: #fafafa; border-bottom: 1px solid #f0f0f0; position: sticky; top: 0;
+}
+.pool-picker-item {
+  padding: 7px 12px; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.pool-picker-item:hover { background: #f0f5ff; }
+.pool-picker-item.selected { background: #e8f1f9; font-weight: 600; }
+.pool-picker-item.empty { color: #6a6e73; font-style: italic; cursor: default; }
+.pool-picker-item.empty:hover { background: none; }
+.pool-picker-tag {
+  font-size: 11px; padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+  background: #f0f0f0; color: #6a6e73;
+}
+.pool-picker-tag.managed { background: #f3faf2; color: #1e4f18; }
