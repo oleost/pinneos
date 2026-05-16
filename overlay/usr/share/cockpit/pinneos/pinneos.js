@@ -1415,30 +1415,21 @@ var _poolCache = null;
 function clearPoolCache() { _poolCache = null; }
 
 function fetchZfsPools() {
-  if (_poolCache) {
-    return cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return _poolCache; });
-  }
-  return cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {superuser: 'try', err: 'message'})
-    .then(function(out) {
-      var pools = out.trim().split('\n').filter(Boolean);
-      var managed = [], other = [];
-      var chain = cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return null; });
-      pools.forEach(function(pool) {
-        chain = chain.then(function() {
-          return cockpit.spawn(
-            ['/usr/bin/zfs', 'get', '-H', '-o', 'value', 'pinneos:managed', pool],
-            {err: 'ignore'}
-          ).then(function(v) {
-            if (v.trim() === 'yes') managed.push(pool);
-            else other.push(pool);
-          }).catch(function() { other.push(pool); });
-        });
-      });
-      return chain.then(function() {
-        _poolCache = { managed: managed, other: other };
-        return _poolCache;
-      });
+  if (_poolCache) return cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return _poolCache; });
+  return cockpit.spawn(
+    ['sh', '-c', 'zpool list -H -o name 2>/dev/null | while IFS= read -r p; do v=$(zfs get -H -o value pinneos:managed "$p" 2>/dev/null); printf "%s\t%s\n" "$p" "$v"; done'],
+    {superuser: 'try', err: 'message'}
+  ).then(function(out) {
+    var managed = [], other = [];
+    out.trim().split('\n').filter(Boolean).forEach(function(line) {
+      var parts = line.split('\t');
+      var pool = parts[0], val = (parts[1] || '').trim();
+      if (val === 'yes') managed.push(pool);
+      else other.push(pool);
     });
+    _poolCache = { managed: managed, other: other };
+    return _poolCache;
+  });
 }
 
 function initPoolPicker(inputId, opts) {
