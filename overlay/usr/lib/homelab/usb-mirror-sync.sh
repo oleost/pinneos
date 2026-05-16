@@ -37,7 +37,7 @@ _slot_mtime() {
         | awk '$2=="PINNEOS_A"{print $1; exit}')
     [ -n "$slot_dev" ] || { echo 0; return; }
     mnt=$(mktemp -d)
-    if ! mount -o ro "$slot_dev" "$mnt" 2>/dev/null; then
+    if ! mount -o ro,norecovery "$slot_dev" "$mnt" 2>/dev/null; then
         rmdir "$mnt"
         echo 0
         return
