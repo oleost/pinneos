@@ -1255,7 +1255,7 @@ function checkUpdateState() {
             url = url.trim();
             var webUrl = url
               .replace('api.github.com/repos', 'github.com')
-              .replace('/releases/latest', '/releases/tag/' + v);
+              .replace('/releases/latest', '/releases/tag/v' + v);
             linkEl.href = webUrl;
             linkEl.style.display = '';
           })
