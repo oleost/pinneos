@@ -12,6 +12,7 @@
   <button class="tab-btn active" id="tab-btn-setup">Setup</button>
   <button class="tab-btn" id="tab-btn-zfs">ZFS</button>
   <button class="tab-btn" id="tab-btn-backup">Mirror &amp; Backup</button>
+  <button class="tab-btn" id="tab-btn-shares">Shares</button>
   <button class="tab-btn" id="tab-btn-access">Access</button>
   <button class="tab-btn" id="tab-btn-update">Update</button>
 </nav>
@@ -342,6 +343,75 @@
         </dl>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- SHARES TAB -->
+<div id="pane-shares" class="pane" style="display:none">
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header card-header-flex">
+        <span>SMB Shares <span id="smb-status-badge" class="badge"></span></span>
+        <button class="btn btn-secondary" id="btn-smb-refresh">↻ Refresh</button>
+      </div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:12px">
+          Accessible from Windows, macOS, and Linux.<br>
+          Windows: <strong>\\pinneos.local\<em>name</em></strong> &nbsp;·&nbsp;
+          macOS: <strong>smb://pinneos.local/<em>name</em></strong>
+        </p>
+        <div id="smb-shares-table"></div>
+        <hr style="margin:16px 0;border:none;border-top:1px solid #d2d2d2">
+        <div class="form-group">
+          <label for="smb-add-name">Share name</label>
+          <input type="text" id="smb-add-name" placeholder="media">
+        </div>
+        <div class="form-group">
+          <label for="smb-add-path">Path on server</label>
+          <input type="text" id="smb-add-path" placeholder="/tank/storage/media">
+        </div>
+        <div style="display:flex;gap:20px;margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="smb-add-guest" checked> Guest access (no password)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="smb-add-readonly"> Read only
+          </label>
+        </div>
+        <button class="btn btn-primary" id="btn-smb-add">Add SMB share</button>
+        <div id="smb-alert"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header card-header-flex">
+        <span>NFS Exports <span id="nfs-status-badge" class="badge"></span></span>
+        <button class="btn btn-secondary" id="btn-nfs-refresh">↻ Refresh</button>
+      </div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:12px">
+          For Linux clients and VMs.<br>
+          Mount: <strong>mount pinneos.local:/<em>path</em> /mnt/point</strong>
+        </p>
+        <div id="nfs-exports-table"></div>
+        <hr style="margin:16px 0;border:none;border-top:1px solid #d2d2d2">
+        <div class="form-group">
+          <label for="nfs-add-path">Path on server</label>
+          <input type="text" id="nfs-add-path" placeholder="/tank/storage/media">
+        </div>
+        <div class="form-group">
+          <label for="nfs-add-clients">Allowed clients</label>
+          <input type="text" id="nfs-add-clients" value="*" placeholder="* or 192.168.1.0/24">
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:14px">
+          <input type="checkbox" id="nfs-add-readonly"> Read only
+        </label>
+        <button class="btn btn-primary" id="btn-nfs-add">Add NFS export</button>
+        <div id="nfs-alert"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 

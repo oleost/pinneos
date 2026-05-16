@@ -158,40 +158,21 @@ Note: Change both `changeme` passwords before starting.
 
 ---
 
-## 5. Samba — Network file sharing (SMB)
+## 5. File sharing — SMB and NFS (built-in)
 
-Mount your ZFS storage as a network drive on Windows, macOS, or Linux.
-No client software needed — shows up directly in Explorer/Finder.
+SMB and NFS are built into PinneOS and managed from the **Cockpit → Shares tab**.
+No Docker required — both services run as host daemons with direct ZFS access.
 
-```yaml
-services:
-  samba:
-    image: lscr.io/linuxserver/samba:latest
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Oslo
-      - SAMBA_CONF_WORKGROUP=WORKGROUP
-      - SAMBA_CONF_SERVER_STRING=PinneOS
-    ports:
-      - "445:445"
-    volumes:
-      - /tank/apps/samba:/config
-      - /tank/storage:/shares
-    restart: unless-stopped
-```
+**SMB** (Windows/macOS/Linux file sharing):
+- Connect from Windows: `\\pinneos.local\<sharename>`
+- Connect from macOS: `smb://pinneos.local/<sharename>`
+- Connect from Linux: `mount -t cifs //pinneos.local/<sharename> /mnt/point`
 
-After starting, edit `/tank/apps/samba/smb.conf` to define shares:
-```ini
-[storage]
-  path = /shares
-  browsable = yes
-  read only = no
-  valid users = your-user
-```
+**NFS** (Linux and VM storage):
+- Mount: `mount pinneos.local:/tank/storage/media /mnt/media`
+- Add to `/etc/fstab`: `pinneos.local:/tank/storage/media  /mnt/media  nfs  defaults  0  0`
 
-Connect from Windows: `\\pinneos.local\storage`
-Connect from macOS: `smb://pinneos.local/storage`
+Both are configured via the Shares tab — no manual config file editing needed.
 
 ---
 

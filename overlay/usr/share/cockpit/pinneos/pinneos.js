@@ -33,12 +33,13 @@ function clearAlert(id) {
 var currentTab = 'setup';
 
 function switchTab(name) {
-  ['setup', 'zfs', 'backup', 'access', 'update'].forEach(function(t) {
+  ['setup', 'zfs', 'backup', 'shares', 'access', 'update'].forEach(function(t) {
     document.getElementById('pane-' + t).style.display = t === name ? '' : 'none';
     document.getElementById('tab-btn-' + t).classList.toggle('active', t === name);
   });
   currentTab = name;
   if (name === 'zfs')    loadZfs();
+  if (name === 'shares') loadShares();
   if (name === 'access') updateAccessInfo();
   if (name === 'update') loadUpdateTab();
 }
@@ -1659,6 +1660,7 @@ function initSnapshotPicker(snapInputId, sourceInputId) {
 document.getElementById('tab-btn-setup').addEventListener('click',   function() { switchTab('setup');  });
 document.getElementById('tab-btn-zfs').addEventListener('click',     function() { switchTab('zfs');    });
 document.getElementById('tab-btn-backup').addEventListener('click',  function() { switchTab('backup'); });
+document.getElementById('tab-btn-shares').addEventListener('click',  function() { switchTab('shares'); });
 document.getElementById('tab-btn-access').addEventListener('click',  function() { switchTab('access'); });
 document.getElementById('tab-btn-update').addEventListener('click',  function() { switchTab('update'); });
 
@@ -1735,6 +1737,159 @@ document.getElementById('usb-mirror-status').addEventListener('click', function(
 document.getElementById('btn-refresh-usb-mirror').addEventListener('click', function() {
   clearAlert('usb-mirror-alert');
   loadUsbMirror();
+});
+
+// ── Shares tab ───────────────────────────────────────────────────────────────
+
+function loadShares() {
+  loadSmbShares();
+  loadNfsExports();
+  loadSmbStatus();
+  loadNfsStatus();
+}
+
+function loadSmbStatus() {
+  cockpit.spawn(['/usr/lib/homelab/shares.sh', 'smb-status'], {superuser: 'try', err: 'ignore'})
+    .then(function(out) {
+      var active = out.trim() === 'active';
+      var badge = document.getElementById('smb-status-badge');
+      badge.textContent = active ? 'running' : 'stopped';
+      badge.className = 'badge ' + (active ? 'badge-ok' : 'badge-warn');
+    });
+}
+
+function loadNfsStatus() {
+  cockpit.spawn(['/usr/lib/homelab/shares.sh', 'nfs-status'], {superuser: 'try', err: 'ignore'})
+    .then(function(out) {
+      var active = out.trim() === 'active';
+      var badge = document.getElementById('nfs-status-badge');
+      badge.textContent = active ? 'running' : 'stopped';
+      badge.className = 'badge ' + (active ? 'badge-ok' : 'badge-warn');
+    });
+}
+
+function loadSmbShares() {
+  var el = document.getElementById('smb-shares-table');
+  el.textContent = 'Loading…';
+  cockpit.spawn(['/usr/lib/homelab/shares.sh', 'smb-list'], {superuser: 'try', err: 'message'})
+    .then(function(out) {
+      var shares;
+      try { shares = JSON.parse(out.trim() || '[]'); } catch(e) { shares = []; }
+      if (shares.length === 0) {
+        el.innerHTML = '<p class="hint">No SMB shares configured. Add one below.</p>';
+        return;
+      }
+      var html = '<table class="table"><thead><tr>' +
+        '<th>Name</th><th>Path</th><th>Guest</th><th>Read only</th><th></th>' +
+        '</tr></thead><tbody>';
+      shares.forEach(function(s) {
+        html += '<tr>' +
+          '<td><strong>' + esc(s.name) + '</strong></td>' +
+          '<td><code>' + esc(s.path) + '</code></td>' +
+          '<td>' + (s.guest === 'yes' ? '✓' : '—') + '</td>' +
+          '<td>' + (s.readonly === 'yes' ? '✓' : '—') + '</td>' +
+          '<td><button class="btn btn-danger-sm" data-action="smb-remove" data-name="' + esc(s.name) + '">Remove</button></td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    })
+    .catch(function(err) {
+      el.innerHTML = '<p class="alert alert-danger">' + esc(String(err.message || err)) + '</p>';
+    });
+}
+
+function loadNfsExports() {
+  var el = document.getElementById('nfs-exports-table');
+  el.textContent = 'Loading…';
+  cockpit.spawn(['/usr/lib/homelab/shares.sh', 'nfs-list'], {superuser: 'try', err: 'message'})
+    .then(function(out) {
+      var exports;
+      try { exports = JSON.parse(out.trim() || '[]'); } catch(e) { exports = []; }
+      if (exports.length === 0) {
+        el.innerHTML = '<p class="hint">No NFS exports configured. Add one below.</p>';
+        return;
+      }
+      var html = '<table class="table"><thead><tr>' +
+        '<th>Path</th><th>Clients</th><th>Options</th><th></th>' +
+        '</tr></thead><tbody>';
+      exports.forEach(function(e) {
+        html += '<tr>' +
+          '<td><code>' + esc(e.path) + '</code></td>' +
+          '<td>' + esc(e.clients) + '</td>' +
+          '<td><code>' + esc(e.options) + '</code></td>' +
+          '<td><button class="btn btn-danger-sm" data-action="nfs-remove" data-path="' + esc(e.path) + '">Remove</button></td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    })
+    .catch(function(err) {
+      el.innerHTML = '<p class="alert alert-danger">' + esc(String(err.message || err)) + '</p>';
+    });
+}
+
+document.getElementById('btn-smb-add').addEventListener('click', function() {
+  var name     = document.getElementById('smb-add-name').value.trim();
+  var path     = document.getElementById('smb-add-path').value.trim();
+  var guest    = document.getElementById('smb-add-guest').checked    ? 'yes' : 'no';
+  var readonly = document.getElementById('smb-add-readonly').checked ? 'yes' : 'no';
+  if (!name || !path) { showAlert('smb-alert', 'danger', 'Name and path are required.'); return; }
+  showAlert('smb-alert', 'warning', 'Adding share…');
+  cockpit.spawn(
+    ['/usr/lib/homelab/shares.sh', 'smb-add', name, path, guest, readonly],
+    {superuser: 'require', err: 'message'}
+  ).then(function() {
+    document.getElementById('smb-add-name').value = '';
+    document.getElementById('smb-add-path').value = '';
+    showAlert('smb-alert', 'success', 'Share added.');
+    loadSmbShares(); loadSmbStatus();
+  }).catch(function(err) { showAlert('smb-alert', 'danger', String(err.message || err)); });
+});
+
+document.getElementById('btn-nfs-add').addEventListener('click', function() {
+  var path     = document.getElementById('nfs-add-path').value.trim();
+  var clients  = document.getElementById('nfs-add-clients').value.trim() || '*';
+  var readonly = document.getElementById('nfs-add-readonly').checked ? 'yes' : 'no';
+  if (!path) { showAlert('nfs-alert', 'danger', 'Path is required.'); return; }
+  showAlert('nfs-alert', 'warning', 'Adding export…');
+  cockpit.spawn(
+    ['/usr/lib/homelab/shares.sh', 'nfs-add', path, clients, readonly],
+    {superuser: 'require', err: 'message'}
+  ).then(function() {
+    document.getElementById('nfs-add-path').value = '';
+    showAlert('nfs-alert', 'success', 'Export added.');
+    loadNfsExports(); loadNfsStatus();
+  }).catch(function(err) { showAlert('nfs-alert', 'danger', String(err.message || err)); });
+});
+
+document.getElementById('smb-shares-table').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-action="smb-remove"]');
+  if (!btn) return;
+  if (!confirm('Remove share "' + btn.dataset.name + '"?')) return;
+  cockpit.spawn(
+    ['/usr/lib/homelab/shares.sh', 'smb-remove', btn.dataset.name],
+    {superuser: 'require', err: 'message'}
+  ).then(function() { loadSmbShares(); })
+   .catch(function(err) { alert(String(err.message || err)); });
+});
+
+document.getElementById('nfs-exports-table').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-action="nfs-remove"]');
+  if (!btn) return;
+  if (!confirm('Remove export "' + btn.dataset.path + '"?')) return;
+  cockpit.spawn(
+    ['/usr/lib/homelab/shares.sh', 'nfs-remove', btn.dataset.path],
+    {superuser: 'require', err: 'message'}
+  ).then(function() { loadNfsExports(); })
+   .catch(function(err) { alert(String(err.message || err)); });
+});
+
+document.getElementById('btn-smb-refresh').addEventListener('click', function() {
+  loadSmbShares(); loadSmbStatus();
+});
+document.getElementById('btn-nfs-refresh').addEventListener('click', function() {
+  loadNfsExports(); loadNfsStatus();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
