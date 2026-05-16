@@ -32,6 +32,18 @@ send_raw_flag() {
     [ "$enc" != "off" ] && [ "$enc" != "-" ] && echo "w" || true
 }
 
+# Stop Docker and release the /var/lib/docker bind-mount before touching apps dataset.
+release_docker() {
+    if systemctl is-active --quiet docker 2>/dev/null || \
+       systemctl is-active --quiet docker.socket 2>/dev/null; then
+        log "Stopping Docker to release /var/lib/docker bind-mount..."
+        systemctl stop docker docker.socket 2>/dev/null || true
+    fi
+    if mountpoint -q /var/lib/docker 2>/dev/null; then
+        umount /var/lib/docker 2>/dev/null || true
+    fi
+}
+
 usage() {
     cat << 'EOF'
 Usage:
@@ -136,6 +148,9 @@ cmd_run() {
     echo "  Destination: $dest"
     echo "  Mode:        $mode (datasets: ${datasets[*]})"
     echo ""
+
+    # Release Docker bind-mount upfront so apps dataset can be destroyed/replaced.
+    release_docker
 
     for dataset in "${datasets[@]}"; do
         local src_ds="${source}/${dataset}"
