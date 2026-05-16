@@ -1,12 +1,14 @@
 [Unit]
-Description=PinneOS — generate /etc/issue with version number
+Description=PinneOS — generate /etc/issue and /etc/motd with version, hostname and IP
 DefaultDependencies=no
+# Run after network so hostname -I resolves, but before getty shows the login prompt.
+After=NetworkManager-wait-online.service network-online.target
 Before=getty.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c '. /etc/homelab/config; printf "PinneOS v%s (\\l)\n\n" "$PINNEOS_VERSION" > /etc/issue'
+ExecStart=/usr/lib/homelab/generate-motd.sh
 
 [Install]
 WantedBy=getty.target
