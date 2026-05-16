@@ -1417,7 +1417,7 @@ function clearPoolCache() { _poolCache = null; }
 function fetchZfsPools() {
   if (_poolCache) return cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return _poolCache; });
   return cockpit.spawn(
-    ['sh', '-c', 'zpool list -H -o name 2>/dev/null | while IFS= read -r p; do v=$(zfs get -H -o value pinneos:managed "$p" 2>/dev/null); printf "%s\t%s\n" "$p" "$v"; done'],
+    ['/usr/lib/homelab/list-pools.sh'],
     {superuser: 'try', err: 'message'}
   ).then(function(out) {
     var managed = [], other = [];
@@ -1458,7 +1458,8 @@ function initPoolPicker(inputId, opts) {
   fetchZfsPools().then(function(pools) {
     if (input.value) return;
     if (opts.preselect === 'managed' && pools.managed.length) input.value = pools.managed[0];
-    else if (opts.preselect === 'other'   && pools.other.length)   input.value = pools.other[0];
+    else if (opts.preselect === 'other' && pools.other.length)   input.value = pools.other[0];
+    else if (opts.preselect === 'other' && pools.managed.length) input.value = pools.managed[0];
   }).catch(function() {});
 
   function renderDrop(pools) {
@@ -1658,11 +1659,11 @@ loadHostname();
 loadUsbMirror();
 
 // Pool pickers — Backup tab
-// backup-dest and backup-list-dest default to the first non-managed pool (the backup target).
+// backup-dest prefers non-managed (a dedicated backup pool) but falls back to any pool.
 // restore-dest defaults to the managed pool (where data is restored to).
-initPoolPicker('backup-dest',      { preselect: 'other',   filter: 'other' });
-initPoolPicker('backup-list-dest', { preselect: 'other',   filter: 'other' });
-initPoolPicker('restore-source',   { preselect: 'other',   filter: 'other' });
+initPoolPicker('backup-dest',      { preselect: 'other' });
+initPoolPicker('backup-list-dest', { preselect: 'other' });
+initPoolPicker('restore-source',   { preselect: 'other' });
 initPoolPicker('restore-dest',     { preselect: 'managed', filter: 'managed' });
 initSnapshotPicker('restore-snapshot', 'restore-source');
 
