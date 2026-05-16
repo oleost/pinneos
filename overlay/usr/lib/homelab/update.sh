@@ -17,48 +17,48 @@ PERSIST_MOUNT="/run/pinneos/persist"
 log()  { logger -t pinneos-update "$*"; echo "$*"; }
 die()  { log "ERROR: $*"; exit 1; }
 
-# Find the grubenv on the boot USB by tracing the running slot's label back to
-# its parent disk, then finding that disk's PINNEOS_PERSIST partition.
-# Falls back to the mounted persist partition if detection fails.
-_find_grubenv() {
-    local boot_label boot_part boot_disk persist_part
+# Find the EFI partition (FAT32) on the boot USB.
+# grubenv lives here so GRUB can always read it (GRUB does not support F2FS/ext4 on persist).
+_find_efi_part() {
+    local boot_label boot_part boot_disk efi_part
     boot_label=$(grep -o 'archisolabel=[^ ]*' /proc/cmdline 2>/dev/null | cut -d= -f2)
     if [ -n "$boot_label" ]; then
         boot_part=$(findfs "LABEL=$boot_label" 2>/dev/null)
         if [ -n "$boot_part" ]; then
             boot_disk=$(lsblk -no PKNAME "$boot_part" 2>/dev/null | head -1)
             if [ -n "$boot_disk" ]; then
-                persist_part=$(lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
-                    | awk '$2=="PINNEOS_PERSIST"{print "/dev/"$1}' | head -1)
-                if [ -n "$persist_part" ]; then
-                    log "Boot USB persist: $persist_part (disk: /dev/$boot_disk)"
-                    echo "$persist_part"
+                efi_part=$(lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null \
+                    | awk '$2=="PINNEOS_EFI"{print "/dev/"$1}' | head -1)
+                if [ -n "$efi_part" ]; then
+                    log "Boot USB EFI: $efi_part (disk: /dev/$boot_disk)"
+                    echo "$efi_part"
                     return 0
                 fi
             fi
         fi
     fi
-    log "Warning: could not detect boot USB — falling back to mounted persist partition"
+    log "Warning: could not detect boot USB EFI partition"
     echo ""
     return 0
 }
 
-_boot_persist_mnt=""
+_boot_efi_mnt=""
 _setup_grubenv() {
-    local persist_dev
-    persist_dev=$(_find_grubenv)
-    if [ -n "$persist_dev" ] && [ "$persist_dev" != "$(findfs LABEL=PINNEOS_PERSIST 2>/dev/null | head -1)" ]; then
-        _boot_persist_mnt=$(mktemp -d)
-        mount "$persist_dev" "$_boot_persist_mnt" 2>/dev/null || _boot_persist_mnt=""
+    local efi_dev
+    efi_dev=$(_find_efi_part)
+    if [ -n "$efi_dev" ]; then
+        _boot_efi_mnt=$(mktemp -d)
+        mount "$efi_dev" "$_boot_efi_mnt" 2>/dev/null || _boot_efi_mnt=""
     fi
-    if [ -n "$_boot_persist_mnt" ]; then
-        GRUBENV="$_boot_persist_mnt/grubenv"
+    if [ -n "$_boot_efi_mnt" ]; then
+        GRUBENV="$_boot_efi_mnt/grubenv"
     else
+        # Fallback: old location on persist partition (pre-v0.3.2 USBs)
         GRUBENV="$PERSIST_MOUNT/grubenv"
     fi
 }
 _teardown_grubenv() {
-    [ -n "$_boot_persist_mnt" ] && umount "$_boot_persist_mnt" 2>/dev/null; rmdir "$_boot_persist_mnt" 2>/dev/null || true
+    [ -n "$_boot_efi_mnt" ] && umount "$_boot_efi_mnt" 2>/dev/null; rmdir "$_boot_efi_mnt" 2>/dev/null || true
 }
 
 current_slot() { grub-editenv "$GRUBENV" list 2>/dev/null | grep boot_slot | cut -d= -f2; }
@@ -266,7 +266,14 @@ fi
 sync
 log "Slot $target written successfully."
 
-# 5. Atomic slot switch
+# 5. Update grub.cfg on EFI partition so GRUB config stays current
+if [ -n "$_boot_efi_mnt" ] && [ -f "/usr/share/pinneos/grub.cfg" ]; then
+    cp "/usr/share/pinneos/grub.cfg" "$_boot_efi_mnt/grub/grub.cfg" \
+        && log "grub.cfg updated on EFI partition" \
+        || log "Warning: could not update grub.cfg on EFI partition"
+fi
+
+# 6. Atomic slot switch
 grub-editenv "$GRUBENV" set boot_slot="$target" boot_tries=0
 log "Slot switched to $target. Reboot to apply update."
 

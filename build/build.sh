@@ -135,12 +135,6 @@ echo "    Formatting partitions..."
 mkfs.fat  -F32 -n PINNEOS_EFI  "${EFI_LOOP}"
 mkfs.ext4 -L PINNEOS_A -q -F   "${SLOTA_LOOP}"
 mkfs.ext4 -L PINNEOS_B -q -F   "${SLOTB_LOOP}"
-if modprobe f2fs 2>/dev/null && mkfs.f2fs -l PINNEOS_PERSIST -f "${PERSIST_LOOP}" 2>/dev/null; then
-    echo "    Persist partition: f2fs"
-else
-    echo "    Persist partition: ext4 (f2fs unavailable on this kernel)"
-    mkfs.ext4 -L PINNEOS_PERSIST -q -F "${PERSIST_LOOP}"
-fi
 
 # Slot B only needs formatting — detach it now to free a loop slot
 losetup -d "${SLOTB_LOOP}"; SLOTB_LOOP=""
@@ -201,17 +195,19 @@ grub-bios-setup \
     "${DISK_LOOP}"
 
 cp /grub/grub.cfg.template "${EFI_MNT}/grub/grub.cfg"
+
+echo "    Initializing grubenv on EFI partition (FAT32, always readable by GRUB)..."
+grub-editenv "${EFI_MNT}/grubenv" create
+grub-editenv "${EFI_MNT}/grubenv" set boot_slot=A
+grub-editenv "${EFI_MNT}/grubenv" set boot_tries=0
+
 sync
 umount "${EFI_MNT}"; losetup -d "${EFI_LOOP}"; EFI_LOOP=""
 losetup -d "${DISK_LOOP}"; DISK_LOOP=""
 
-echo "    Initializing grubenv (boot_slot=A, boot_tries=0)..."
-mount "${PERSIST_LOOP}" "${PERSIST_MNT}"
-grub-editenv "${PERSIST_MNT}/grubenv" create
-grub-editenv "${PERSIST_MNT}/grubenv" set boot_slot=A
-grub-editenv "${PERSIST_MNT}/grubenv" set boot_tries=0
-sync
-umount "${PERSIST_MNT}"; losetup -d "${PERSIST_LOOP}"; PERSIST_LOOP=""
+echo "    Formatting persist partition (ext4)..."
+mkfs.ext4 -L PINNEOS_PERSIST -q -F "${PERSIST_LOOP}"
+losetup -d "${PERSIST_LOOP}"; PERSIST_LOOP=""
 trap - EXIT
 
 echo ""
