@@ -227,14 +227,21 @@ cmd_run() {
     echo ""
     echo "  ✓ Restore complete."
     echo ""
-    echo "  Next steps:"
-    echo "    1. Mark the pool as PinneOS-managed:"
-    echo "       zfs set ${ZFS_MANAGED_PROPERTY}=yes $dest"
-    echo ""
-    echo "    2. If this is a new main pool, update GRUB to use it."
-    echo "       (Or use the Cockpit ZFS panel → 'Set as main pool')"
-    echo ""
-    echo "    3. Reboot."
+
+    local already_managed
+    already_managed=$(zfs get -H -o value "$ZFS_MANAGED_PROPERTY" "$dest" 2>/dev/null)
+    if [ "$already_managed" = "yes" ]; then
+        echo "  Reboot to apply."
+    else
+        echo "  Next steps (restoring to a new pool):"
+        echo "    1. Mark the pool as PinneOS-managed:"
+        echo "       zfs set ${ZFS_MANAGED_PROPERTY}=yes $dest"
+        echo ""
+        echo "    2. If this is a new main pool, update GRUB to use it."
+        echo "       (Or use the Cockpit ZFS panel → 'Set as main pool')"
+        echo ""
+        echo "    3. Reboot."
+    fi
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
