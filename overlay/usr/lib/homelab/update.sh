@@ -262,5 +262,9 @@ log "Slot $target written successfully."
 grub-editenv "$GRUBENV" set boot_slot="$target" boot_tries=0
 log "Slot switched to $target. Reboot to apply update."
 
-# 6. Arm the backup USB sync timer (fires 24h from now)
-systemctl start pinneos-backup-usb-sync-delay.timer 2>/dev/null || true
+# 6. Sync mirror USB now — before reboot — so both USBs have the new slot.
+# Without this, GRUB might pick the mirror USB (identical label) and boot the
+# old version. We run sync in the foreground so it completes before reboot.
+log "Syncing mirror USB (if connected)..."
+/usr/lib/homelab/usb-mirror-sync.sh 2>/dev/null && log "Mirror sync complete." \
+    || log "No mirror USB connected — skipping sync."
