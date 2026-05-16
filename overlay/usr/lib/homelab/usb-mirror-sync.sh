@@ -61,7 +61,10 @@ else
             break
         fi
     done
-    [ -n "$mirror_disk" ] || die "No mirror USB detected"
+    if [ -z "$mirror_disk" ]; then
+        info "No mirror USB detected — nothing to sync"
+        exit 0
+    fi
 fi
 
 info "Mirror disk: /dev/$mirror_disk"
