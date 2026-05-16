@@ -15,7 +15,7 @@ This is the only constraint that can break a build entirely if ignored.
 | OpenZFS release | Minimum kernel | Maximum kernel |
 |-----------------|---------------|----------------|
 | 2.3.x | 3.10 | 6.15 |
-| 2.4.x | 4.18 | 6.16+ (no upper limit as of Dec 2025) |
+| 2.4.x | 4.18 | 7.0 |
 
 **Rule:** Before upgrading either `linux-lts` or `zfs-dkms`, verify the new combination
 is within the supported range. Check the `META` file in the OpenZFS release:
@@ -44,7 +44,7 @@ values in `profile/profiledef.sh` are still valid. They changed in archiso 75+.
 |-----------|---------|--------|--------------------------|-------|
 | `linux-lts` | latest LTS at build time | No | Must be within ZFS supported range | [kernel.org LTS](https://www.kernel.org/) |
 | `linux-lts-headers` | matches linux-lts | No | Must match linux-lts exactly | same as above |
-| `zfs-dkms` | 2.4.1 (archzfs experimental) | Channel | **Critical:** kernel range 4.18–6.16+ | [OpenZFS releases](https://github.com/openzfs/zfs/releases) |
+| `zfs-dkms` | 2.4.2 (archzfs experimental) | Channel | **Critical:** kernel range 4.18–7.0 | [OpenZFS releases](https://github.com/openzfs/zfs/releases) |
 | `zfs-utils` | matches zfs-dkms | Channel | Must match zfs-dkms | same as above |
 | `grub` | latest (Arch extra) | No | Low | [Arch pkg](https://archlinux.org/packages/extra/x86_64/grub/) |
 | `cockpit` | latest (Arch extra) | No | Plugin API: our JS uses basic `cockpit.spawn()` — stable across versions | [Arch pkg](https://archlinux.org/packages/extra/x86_64/cockpit/) |
@@ -63,7 +63,7 @@ values in `profile/profiledef.sh` are still valid. They changed in archiso 75+.
 | Repo | `archzfs` experimental | GitHub release channel |
 | URL | `https://github.com/archzfs/archzfs/releases/download/experimental` | |
 | SigLevel | `Optional TrustAll` | Build-time convenience — key imported in build.sh |
-| ZFS version | **2.4.1** | OpenZFS December 2025 release |
+| ZFS version | **2.4.2** | OpenZFS May 2026 release |
 
 **When to upgrade ZFS channel:**
 - OpenZFS releases a new minor (2.5.x) → check kernel support range, then update pacman.conf URL
@@ -135,3 +135,4 @@ Before building a new release:
 | PinneOS version | linux-lts | ZFS | Docker | Cockpit | Date |
 |----------------|-----------|-----|--------|---------|------|
 | 0.1.0 | 6.12.x (LTS) | 2.4.1 | 28.x | 332+ | 2026-05-12 |
+| 0.2.8 | 6.18.x (LTS) | 2.4.2 | 29.x | 361+ | 2026-05-16 |

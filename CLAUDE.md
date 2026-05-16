@@ -109,7 +109,7 @@ All three run as Docker containers on the apps ZFS dataset.
 - Complex for contributors unfamiliar with Nix
 - Would be the best choice IF the project were single-maintainer and Nix-fluent
 
-### ZFS: DKMS approach (zfs-dkms 2.4.1 from archzfs)
+### ZFS: DKMS approach (zfs-dkms 2.4.2 from archzfs)
 
 **Chosen over:** `zfs-linux-lts` (pre-built binary packages)
 
@@ -120,9 +120,9 @@ All three run as Docker containers on the apps ZFS dataset.
 - Cost: adds ~5 minutes to build time and requires `gcc`/`make` in the live image.
 
 **Which archzfs package:**
-- `zfs-dkms` 2.4.1 from the archzfs experimental GitHub release (`github.com/archzfs/archzfs/releases/download/experimental`).
+- `zfs-dkms` 2.4.2 from the archzfs experimental GitHub release (`github.com/archzfs/archzfs/releases/download/experimental`).
 - The archzfs.com stable repo only has 2.3.3 (caps at Linux-Maximum 6.15 — fails to build against kernel 6.16+).
-- OpenZFS 2.4.0 (December 2025) added proper kernel 6.16+ support. No source patches are needed.
+- OpenZFS 2.4.x (December 2025+) added proper kernel 6.16–7.0 support. No source patches are needed.
 - `SigLevel = Optional TrustAll` in pacman.conf avoids the key-import step during build.
 
 **Why userspace pool import (not initramfs):**
@@ -381,7 +381,7 @@ build/
   profile/
     profiledef.sh             archiso profile: name, bootmodes, install_dir
     packages.x86_64           Complete package list for the live image
-    pacman.conf               Includes archzfs experimental repo (zfs-dkms 2.4.1)
+    pacman.conf               Includes archzfs experimental repo (zfs-dkms 2.4.2)
     grub/grub.cfg             GRUB menu with A/B slot support
     airootfs/
       etc/mkinitcpio.conf     Hooks: base udev archiso block filesystems keyboard

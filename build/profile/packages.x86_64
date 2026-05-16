@@ -23,8 +23,8 @@ efibootmgr
 syslinux
 
 # ── ZFS — DKMS approach (reliable: compiles against exact kernel in image) ────
-# zfs-dkms 2.4.1 from archzfs experimental (OpenZFS Dec 2025 release).
-# Has native kernel 6.16+ support — no source patches needed.
+# zfs-dkms 2.4.2 from archzfs experimental (OpenZFS May 2026 release).
+# Linux 4.18–7.0 support. Bug fixes: read corruption, draid rebuild corruption.
 zfs-dkms
 zfs-utils
 dkms
