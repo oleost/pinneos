@@ -165,14 +165,18 @@ cmd_run() {
 
             echo "  Restoring $dataset from @${snap}..."
 
-            # Warn if destination dataset already exists
+            # Destroy existing destination dataset (and all its snapshots) so
+            # zfs receive can create it fresh. -F alone is not enough when the
+            # destination already has snapshots.
             if zfs list "$dst_ds" >/dev/null 2>&1; then
-                warn "$dst_ds already exists and will be overwritten."
+                warn "$dst_ds already exists — destroying it before restore."
+                zfs destroy -r "$dst_ds"
             fi
 
             local raw_flag
             raw_flag=$(send_raw_flag "$src_ds")
-            zfs send -Rp${raw_flag} "${src_ds}@${snap}" | zfs receive -F "$dst_ds"
+            # No -F: destination no longer exists; -F breaks encrypted raw receive to new datasets.
+            zfs send -Rp${raw_flag} "${src_ds}@${snap}" | zfs receive "$dst_ds"
 
         else
             # File-based source
