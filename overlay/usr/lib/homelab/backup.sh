@@ -60,9 +60,10 @@ datasets_for_mode() {
 # ── Find the most recent shared snapshot between source and dest dataset ─────
 last_common_snapshot() {
     local src="$1" dst="$2"
-    # List snapshot names on source (newest first), check if dest has each one
+    # List snapshot names on source (newest first), check if dest has each one.
+    # The grep || true prevents pipefail from exiting when no backup snapshots exist yet.
     zfs list -H -t snapshot -o name -s creation -r "$src" 2>/dev/null \
-        | grep "@${SNAPSHOT_PREFIX}" \
+        | { grep "@${SNAPSHOT_PREFIX}" || true; } \
         | tac \
         | while read -r snap; do
             name="${snap##*@}"
