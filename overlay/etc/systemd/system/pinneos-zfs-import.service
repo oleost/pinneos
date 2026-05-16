@@ -1,10 +1,9 @@
 [Unit]
 Description=PinneOS ZFS pool import
 DefaultDependencies=no
-After=systemd-udev-settle.service
+After=systemd-udevd.service
 # Ensure Docker waits for ZFS so /var/lib/docker comes from ZFS, not tmpfs
 Before=docker.service local-fs.target
-Wants=systemd-udev-settle.service
 
 [Service]
 Type=oneshot
