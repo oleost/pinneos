@@ -37,13 +37,13 @@ _slot_mtime() {
         | awk '$2=="PINNEOS_A"{print $1; exit}')
     [ -n "$slot_dev" ] || { echo 0; return; }
     mnt=$(mktemp -d)
-    if ! mount -o ro,norecovery "$slot_dev" "$mnt" 2>/dev/null; then
+    if ! mount -o ro,noload "$slot_dev" "$mnt" >/dev/null 2>&1; then
         rmdir "$mnt"
         echo 0
         return
     fi
     mtime=$(stat -c %Y "$mnt/$SFS_PATH" 2>/dev/null || echo 0)
-    umount "$mnt" 2>/dev/null || true
+    umount "$mnt" >/dev/null 2>&1 || true
     rmdir "$mnt" 2>/dev/null || true
     echo "${mtime:-0}"
 }
@@ -85,8 +85,8 @@ else
 fi
 
 # Compare squashfs mtimes to pick sync direction
-mtime_a=$(_slot_mtime "$disk_a")
-mtime_b=$(_slot_mtime "$disk_b")
+mtime_a=$(_slot_mtime "$disk_a" | tail -1)
+mtime_b=$(_slot_mtime "$disk_b" | tail -1)
 
 info "Comparing: /dev/$disk_a (mtime=$mtime_a) vs /dev/$disk_b (mtime=$mtime_b)"
 
