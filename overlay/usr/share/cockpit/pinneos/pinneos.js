@@ -1095,7 +1095,7 @@ function runRestore() {
   var mode     = radioValue('restore-mode');
   if (!source) { alert('Enter a source pool or dataset.'); return; }
   if (!dest)   { alert('Enter a destination pool.'); return; }
-  if (!confirm('Restore will overwrite existing datasets on "' + dest + '". Continue?')) return;
+  if (!confirm('This will overwrite all data on "' + dest + '" after the selected snapshot.\n\nUse "Browse backup" above to safely recover individual files instead.\n\nContinue with full restore?')) return;
 
   clearLog('restore-log');
   appendLog('restore-log', 'Starting restore...\n');
@@ -1115,6 +1115,76 @@ function runRestore() {
   })
   .finally(function() {
     document.getElementById('btn-run-restore').disabled = false;
+  });
+}
+
+// ── Browse restore (non-destructive clone mount) ──────────────────────────────
+
+var _browseMounted = false;
+
+function setBrowseMounted(mountPath) {
+  _browseMounted = true;
+  var info = document.getElementById('browse-mounted-info');
+  var alert = document.getElementById('browse-mount-path-alert');
+  info.style.display = '';
+  alert.innerHTML = '<strong>Mounted at ' + esc(mountPath) + '</strong><br>' +
+    'Open a terminal and copy files:<br>' +
+    '<code style="user-select:all">cp -r ' + esc(mountPath) + '/path/to/file /destination/</code>';
+  document.getElementById('btn-browse-mount').style.display = 'none';
+  document.getElementById('btn-browse-unmount').style.display = '';
+}
+
+function setBrowseUnmounted() {
+  _browseMounted = false;
+  document.getElementById('browse-mounted-info').style.display = 'none';
+  document.getElementById('btn-browse-mount').style.display = '';
+  document.getElementById('btn-browse-unmount').style.display = 'none';
+}
+
+function runBrowseMount() {
+  var source   = document.getElementById('browse-source').value.trim();
+  var snapshot = document.getElementById('browse-snapshot').value.trim();
+  if (!source) { alert('Enter a backup pool or dataset.'); return; }
+
+  clearLog('browse-log');
+  appendLog('browse-log', 'Mounting snapshot for browsing...\n');
+  document.getElementById('btn-browse-mount').disabled = true;
+
+  var cmd = ['/usr/lib/homelab/restore-browse.sh', 'mount', '--source', source];
+  if (snapshot) cmd = cmd.concat(['--snapshot', snapshot]);
+
+  cockpit.spawn(cmd, {superuser: 'try', err: 'message'})
+  .stream(function(data) { appendLog('browse-log', data); })
+  .then(function(out) {
+    var match = (out || '').match(/MOUNT_PATH:(.+)/);
+    var mountPath = match ? match[1].trim() : '/mnt/pinneos-restore';
+    setBrowseMounted(mountPath);
+    appendLog('browse-log', '\n✓ Ready. Copy files, then click "Unmount & clean up".');
+  })
+  .catch(function(err) {
+    appendLog('browse-log', '\n✗ Error: ' + String(err.message || err));
+  })
+  .finally(function() {
+    document.getElementById('btn-browse-mount').disabled = false;
+  });
+}
+
+function runBrowseUnmount() {
+  clearLog('browse-log');
+  appendLog('browse-log', 'Unmounting and cleaning up...\n');
+  document.getElementById('btn-browse-unmount').disabled = true;
+
+  cockpit.spawn(['/usr/lib/homelab/restore-browse.sh', 'unmount'], {superuser: 'try', err: 'message'})
+  .stream(function(data) { appendLog('browse-log', data); })
+  .then(function() {
+    setBrowseUnmounted();
+    appendLog('browse-log', '\n✓ Clone removed.');
+  })
+  .catch(function(err) {
+    appendLog('browse-log', '\n✗ Error: ' + String(err.message || err));
+  })
+  .finally(function() {
+    document.getElementById('btn-browse-unmount').disabled = false;
   });
 }
 
@@ -1603,6 +1673,8 @@ document.getElementById('btn-reboot-now').addEventListener('click', function() {
 document.getElementById('btn-run-backup').addEventListener('click', runBackup);
 document.getElementById('btn-list-backups').addEventListener('click', listBackups);
 document.getElementById('btn-run-restore').addEventListener('click', runRestore);
+document.getElementById('btn-browse-mount').addEventListener('click', runBrowseMount);
+document.getElementById('btn-browse-unmount').addEventListener('click', runBrowseUnmount);
 
 document.getElementById('hostname-input').addEventListener('input', updateHostnamePreview);
 document.getElementById('btn-save-hostname').addEventListener('click', saveHostname);
@@ -1677,6 +1749,9 @@ initPoolPicker('backup-list-dest', { preselect: 'other', backupSuffix: '/backups
 initPoolPicker('restore-source',   { preselect: 'other', backupSuffix: '/backups' });
 initPoolPicker('restore-dest',     { preselect: 'managed', filter: 'managed' });
 initSnapshotPicker('restore-snapshot', 'restore-source');
+
+initPoolPicker('browse-source',    { preselect: 'other', backupSuffix: '/backups' });
+initSnapshotPicker('browse-snapshot', 'browse-source');
 
 // Keep backup-list-dest in sync with backup-dest (same destination, usually)
 document.getElementById('backup-dest').addEventListener('change', function() {

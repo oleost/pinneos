@@ -259,17 +259,44 @@
       </div>
     </div>
 
-    <!-- Restore -->
+    <!-- Restore: Browse (non-destructive) -->
     <div class="card">
-      <div class="card-header">Restore</div>
+      <div class="card-header">Browse backup</div>
       <div class="card-body">
         <p class="hint" style="margin-bottom:14px;">
-          Restores datasets from a backup pool to a destination pool.<br>
-          The destination pool must exist. Works in recovery mode without an active pool.
+          Mounts a backup snapshot as a read-only clone so you can copy individual files.<br>
+          Nothing is overwritten — unmount when done to clean up.
         </p>
         <div class="form-group">
+          <label for="browse-source">Backup pool or dataset</label>
+          <input type="text" id="browse-source" placeholder="tank/backups">
+        </div>
+        <div class="form-group">
+          <label for="browse-snapshot">Snapshot <span class="hint">(leave blank for most recent)</span></label>
+          <input type="text" id="browse-snapshot" placeholder="pinneos-backup-2026-05-11T…">
+        </div>
+        <div id="browse-mounted-info" style="display:none">
+          <div class="alert alert-success" id="browse-mount-path-alert" style="margin-top:0;margin-bottom:12px;"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-browse-mount">Mount for browsing</button>
+          <button class="btn btn-secondary" id="btn-browse-unmount" style="display:none">Unmount &amp; clean up</button>
+        </div>
+        <div id="browse-log" class="log-area" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Restore: Full (destructive) -->
+    <div class="card">
+      <div class="card-header">Full restore <span class="badge badge-warn" style="font-size:11px;margin-left:8px;">Destructive</span></div>
+      <div class="card-body">
+        <div class="alert alert-warning" style="margin-top:0;margin-bottom:14px;">
+          Overwrites the destination pool with data from the backup. All data written after the selected snapshot will be lost.
+          Use <strong>Browse backup</strong> above to recover individual files safely.
+        </div>
+        <div class="form-group">
           <label for="restore-source">Source (backup pool or dataset)</label>
-          <input type="text" id="restore-source" placeholder="backup-pool">
+          <input type="text" id="restore-source" placeholder="tank/backups">
         </div>
         <div class="form-group">
           <label for="restore-snapshot">Snapshot <span class="hint">(leave blank for most recent)</span></label>
@@ -284,15 +311,15 @@
           <div class="radio-group">
             <label class="radio-label">
               <input type="radio" name="restore-mode" value="system-apps" checked>
-              System + Apps
+              System + Apps <span class="hint">(system/, apps/)</span>
             </label>
             <label class="radio-label">
               <input type="radio" name="restore-mode" value="full">
-              Full
+              Full <span class="hint">(+ storage/ — all user data)</span>
             </label>
           </div>
         </div>
-        <button class="btn btn-primary" id="btn-run-restore">Restore</button>
+        <button class="btn btn-danger" id="btn-run-restore">Restore</button>
         <div id="restore-log" class="log-area" style="display:none"></div>
       </div>
     </div>
