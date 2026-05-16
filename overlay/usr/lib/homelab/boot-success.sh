@@ -20,6 +20,14 @@ if [ -n "$boot_disk" ]; then
         | awk '$2=="PINNEOS_PERSIST"{print "/dev/"$1}' | head -1)
 fi
 
+# Record boot disk early so usb-mirror-sync.sh can identify it later when a
+# second USB (with identical labels) is plugged in.
+if [ -n "$boot_disk" ]; then
+    mkdir -p /run/pinneos
+    echo "$boot_disk" > /run/pinneos/boot-disk
+    log "Boot disk recorded: /dev/$boot_disk"
+fi
+
 if [ -n "$persist_dev" ]; then
     mnt=$(mktemp -d)
     if mount "$persist_dev" "$mnt" 2>/dev/null; then

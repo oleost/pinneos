@@ -23,9 +23,15 @@ die()  { log "ERROR: $*"; exit 1; }
 info() { log "$*"; echo "$*"; }
 
 # Find the disk that the running system booted from.
-# Uses the archisolabel kernel parameter (e.g. PINNEOS_A or PINNEOS_B) which
-# archiso sets, then traces that partition back to its parent disk.
+# Primary: /run/pinneos/boot-disk written by boot-success.sh at boot time,
+# when typically only the boot USB is connected — unambiguous.
+# Fallback: archisolabel from /proc/cmdline + findfs (ambiguous when two
+# identical-label USBs are connected, but used if the state file is missing).
 _boot_disk() {
+    if [ -f /run/pinneos/boot-disk ]; then
+        cat /run/pinneos/boot-disk
+        return
+    fi
     local label part
     label=$(grep -o 'archisolabel=[^ ]*' /proc/cmdline 2>/dev/null | cut -d= -f2)
     [ -n "$label" ] || return 1
