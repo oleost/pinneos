@@ -1,13 +1,1 @@
 
-  ____  _                       ___  ____
- |  _ \(_)_ __  _ __   ___  ___/ _ \/ ___|
- | |_) | | '_ \| '_ \ / _ \/ _ \ | | \___ \
- |  __/| | | | | | | |  __/ (_) | |_| |___) |
- |_|   |_|_| |_|_| |_|\___|\___/ \___/|____/
-
-  Web admin   http://pinneos.local:9090   (Cockpit)
-  Docker UI   http://pinneos.local:5001   (Dockge)
-  Dashboard   http://pinneos.local        (Homepage)
-
-  First time? Run: pinneos-wizard
-

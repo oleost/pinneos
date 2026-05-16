@@ -1,0 +1,12 @@
+[Unit]
+Description=PinneOS — generate /etc/issue with version number
+DefaultDependencies=no
+Before=getty.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '. /etc/homelab/config; printf "PinneOS v%s (\\l)\n\n" "$PINNEOS_VERSION" > /etc/issue'
+
+[Install]
+WantedBy=getty.target
