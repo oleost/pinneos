@@ -411,14 +411,16 @@ function initPool(name) {
 
 function confirmDestroyPool(name) {
   if (!window.confirm('Permanently destroy pool "' + name + '" and ALL data on it?')) return;
-  cockpit.spawn(['/usr/bin/zpool', 'destroy', name], {superuser: 'try', err: 'message'})
+  cockpit.spawn(
+    ['/usr/lib/homelab/zfs-destroy-pool.sh', name],
+    {superuser: 'require', err: 'message'}
+  )
     .then(function() { loadPools(); loadDisks(); })
     .catch(function(err) {
       document.getElementById('pool-table-wrap').insertAdjacentHTML(
         'beforeend',
         '<p class="alert alert-danger" style="margin-top:8px">' +
           esc(String(err.message || err)) +
-          ' — Try <strong>Release mounts</strong> first to stop Docker.' +
         '</p>'
       );
     });
@@ -435,7 +437,7 @@ function releaseDockerMounts() {
   document.getElementById('btn-release-mounts').disabled = true;
 
   cockpit.spawn(
-    ['/usr/bin/systemctl', 'stop', 'docker', 'docker.socket'],
+    ['/usr/bin/systemctl', 'stop', 'docker', 'docker.socket', 'zfs-zed.service'],
     {superuser: 'require', err: 'message'}
   )
   .then(function() {
