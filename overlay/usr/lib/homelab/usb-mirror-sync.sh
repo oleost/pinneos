@@ -45,8 +45,10 @@ info "Boot disk: /dev/$boot_disk"
 
 if [ -n "$1" ]; then
     mirror_disk="${1##/dev/}"
-    [ "$mirror_disk" != "$boot_disk" ] \
-        || die "/dev/$mirror_disk is the boot disk — refusing sync to self"
+    if [ "$mirror_disk" = "$boot_disk" ]; then
+        info "/dev/$mirror_disk is the boot disk — nothing to do"
+        exit 0
+    fi
     _is_pinneos_disk "/dev/$mirror_disk" \
         || die "/dev/$mirror_disk has no PINNEOS_A partition — not a PinneOS USB"
 else

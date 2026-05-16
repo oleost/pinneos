@@ -1,7 +1,6 @@
 [Unit]
 Description=PinneOS USB mirror sync (auto-detect mirror disk)
-# Runs after boot-success confirms the current slot is healthy.
-After=pinneos-boot-success.service
+After=multi-user.target
 
 [Service]
 Type=oneshot

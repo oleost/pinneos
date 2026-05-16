@@ -5,6 +5,7 @@ release/
 *.iso
 *.sha256
 *.json
+!overlay/**/*.json
 __pycache__/
 *.pyc
 .env
