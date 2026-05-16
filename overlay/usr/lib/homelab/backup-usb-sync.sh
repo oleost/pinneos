@@ -66,7 +66,7 @@ mkdir -p /mnt/pinneos-active /mnt/pinneos-backup
 mount -o ro "$active_dev"       /mnt/pinneos-active
 mount        "$backup_slot_dev" /mnt/pinneos-backup
 
-rsync -a --checksum --delete /mnt/pinneos-active/ /mnt/pinneos-backup/
+rsync -a --checksum --delete --inplace /mnt/pinneos-active/ /mnt/pinneos-backup/
 sync
 
 umount /mnt/pinneos-active /mnt/pinneos-backup
