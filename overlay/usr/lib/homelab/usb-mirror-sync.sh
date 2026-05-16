@@ -87,24 +87,50 @@ else
     disk_b=$(echo "$all_pinneos" | awk '{print $2}')
 fi
 
-# Compare squashfs mtimes to pick sync direction
-mtime_a=$(_slot_mtime "$disk_a" | tail -1)
-mtime_b=$(_slot_mtime "$disk_b" | tail -1)
+# Read USB role from the EFI partition's pinneos-role file
+_usb_role() {
+    local disk="$1" efi_dev mnt role
+    efi_dev=$(lsblk -lpno NAME,LABEL "/dev/$disk" 2>/dev/null \
+        | awk '$2=="PINNEOS_EFI"{print $1; exit}')
+    [ -n "$efi_dev" ] || { echo "primary"; return; }
+    mnt=$(mktemp -d)
+    if mount -o ro "$efi_dev" "$mnt" 2>/dev/null; then
+        role=$(cat "$mnt/pinneos-role" 2>/dev/null | tr -d '[:space:]')
+        umount "$mnt" 2>/dev/null || true
+    fi
+    rmdir "$mnt" 2>/dev/null || true
+    echo "${role:-primary}"
+}
 
-info "Comparing: /dev/$disk_a (mtime=$mtime_a) vs /dev/$disk_b (mtime=$mtime_b)"
+role_a=$(_usb_role "$disk_a")
+role_b=$(_usb_role "$disk_b")
 
-if [ "$mtime_a" -eq "$mtime_b" ]; then
-    info "Both USBs are identical — nothing to sync"
-    exit 0
-elif [ "$mtime_a" -gt "$mtime_b" ]; then
+info "USB roles: /dev/$disk_a=$role_a, /dev/$disk_b=$role_b"
+
+if [ "$role_a" = "primary" ] && [ "$role_b" = "backup" ]; then
     src_disk="$disk_a"
     dst_disk="$disk_b"
-else
+elif [ "$role_b" = "primary" ] && [ "$role_a" = "backup" ]; then
     src_disk="$disk_b"
     dst_disk="$disk_a"
+else
+    # No roles set — fall back to mtime comparison
+    mtime_a=$(_slot_mtime "$disk_a" | tail -1)
+    mtime_b=$(_slot_mtime "$disk_b" | tail -1)
+    info "No roles set — comparing mtime: /dev/$disk_a=$mtime_a, /dev/$disk_b=$mtime_b"
+    if [ "$mtime_a" -eq "$mtime_b" ]; then
+        info "Both USBs are identical — nothing to sync"
+        exit 0
+    elif [ "$mtime_a" -gt "$mtime_b" ]; then
+        src_disk="$disk_a"
+        dst_disk="$disk_b"
+    else
+        src_disk="$disk_b"
+        dst_disk="$disk_a"
+    fi
 fi
 
-info "Source (newer): /dev/$src_disk → Destination (older): /dev/$dst_disk"
+info "Source (primary): /dev/$src_disk → Destination (backup): /dev/$dst_disk"
 
 # ── Stale mount cleanup ────────────────────────────────────────────────────────
 

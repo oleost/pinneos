@@ -47,6 +47,7 @@ file_permissions=(
   ["/usr/lib/homelab/zfs-destroy-pool.sh"]="0:0:755"
   ["/usr/lib/homelab/shares.sh"]="0:0:755"
   ["/usr/lib/homelab/apps.sh"]="0:0:755"
+  ["/usr/lib/homelab/set-usb-role.sh"]="0:0:755"
   ["/usr/lib/homelab/smart-alert.sh"]="0:0:755"
   ["/usr/lib/homelab/generate-motd.sh"]="0:0:755"
   ["/usr/lib/homelab/wizard.py"]="0:0:755"

@@ -1193,10 +1193,42 @@ function runBrowseUnmount() {
 }
 
 // ── USB Mirror (Setup tab) ────────────────────────────────────────────────────
-//
-// Both USB sticks are equal mirrors — no "primary vs backup" distinction.
-// usb-mirror-sync.sh syncs Slot A, Slot B and grubenv from the boot USB to
-// any other connected PinneOS USB. No registration required.
+// USB role is stored in PINNEOS_EFI/pinneos-role (primary|backup).
+// The primary USB is the preferred boot device; backup keeps the last confirmed version.
+
+function loadUsbRole() {
+  var badge = document.getElementById('usb-role-badge');
+  badge.textContent = 'detecting…';
+  badge.className = 'badge';
+  cockpit.spawn(['/bin/sh', '-c',
+    'boot_label=$(grep -o "archisolabel=[^ ]*" /proc/cmdline | cut -d= -f2); ' +
+    'boot_part=$(findfs "LABEL=$boot_label" 2>/dev/null); ' +
+    'boot_disk=$(lsblk -no PKNAME "$boot_part" 2>/dev/null | head -1); ' +
+    'efi_dev=$(lsblk -rno NAME,LABEL "/dev/$boot_disk" 2>/dev/null | awk \'$2=="PINNEOS_EFI"{print "/dev/"$1}\' | head -1); ' +
+    'mnt=$(mktemp -d); mount -o ro "$efi_dev" "$mnt" 2>/dev/null; ' +
+    'cat "$mnt/pinneos-role" 2>/dev/null || echo "primary"; ' +
+    'umount "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null'
+  ], {superuser: 'try', err: 'message'})
+    .then(function(out) {
+      var role = out.trim() || 'primary';
+      badge.textContent = role === 'backup' ? 'Backup' : 'Primary';
+      badge.className = role === 'backup' ? 'badge badge-warn' : 'badge badge-ok';
+    })
+    .catch(function() {
+      badge.textContent = 'unknown';
+      badge.className = 'badge';
+    });
+}
+
+function setUsbRole(role) {
+  showAlert('usb-mirror-alert', 'warning', 'Setting role to ' + role + '…');
+  cockpit.spawn(['/usr/lib/homelab/set-usb-role.sh', role], {superuser: 'require', err: 'message'})
+    .then(function() {
+      showAlert('usb-mirror-alert', 'success', 'USB marked as ' + role + '. Changes take effect on next GRUB boot.');
+      loadUsbRole();
+    })
+    .catch(function(err) { showAlert('usb-mirror-alert', 'danger', String(err.message || err)); });
+}
 
 function loadUsbMirror() {
   var wrap = document.getElementById('usb-mirror-status');
@@ -1738,6 +1770,18 @@ document.getElementById('usb-mirror-status').addEventListener('click', function(
 document.getElementById('btn-refresh-usb-mirror').addEventListener('click', function() {
   clearAlert('usb-mirror-alert');
   loadUsbMirror();
+  loadUsbRole();
+});
+
+document.getElementById('btn-set-primary').addEventListener('click', function() {
+  if (confirm('Mark this USB as PRIMARY?\nGRUB will always prefer it and mirror sync will go primary → backup.')) {
+    setUsbRole('primary');
+  }
+});
+document.getElementById('btn-set-backup').addEventListener('click', function() {
+  if (confirm('Mark this USB as BACKUP?\nGRUB will show a warning when booting from this stick.')) {
+    setUsbRole('backup');
+  }
 });
 
 // ── Shares tab ───────────────────────────────────────────────────────────────
@@ -2019,6 +2063,7 @@ document.getElementById('btn-apps-refresh').addEventListener('click', loadApps);
 switchTab('setup');
 loadHostname();
 loadUsbMirror();
+loadUsbRole();
 
 // Pool pickers — Backup tab
 // backup-dest prefers non-managed (a dedicated backup pool) but falls back to any pool.

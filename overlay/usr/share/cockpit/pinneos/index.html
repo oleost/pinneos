@@ -64,9 +64,17 @@
       <div class="card-body">
         <p class="hint" style="margin-bottom:14px;">
           A second PinneOS USB stick — an exact mirror of this one.<br>
-          Both slots (A &amp; B) are always kept identical. GRUB can boot from either freely.
-          Synced automatically on every boot and when the mirror is plugged in.
+          The <strong>primary</strong> USB is the preferred boot device; the <strong>backup</strong> keeps the last confirmed-good version.
+          Synced automatically after each successful boot.
         </p>
+        <div id="usb-role-wrap" style="margin-bottom:14px">
+          <span class="hint">This USB role: </span>
+          <span id="usb-role-badge" class="badge">detecting…</span>
+          <span style="margin-left:12px">
+            <button class="btn btn-secondary" id="btn-set-primary" style="margin-right:4px">Set as Primary</button>
+            <button class="btn btn-secondary" id="btn-set-backup">Set as Backup</button>
+          </span>
+        </div>
         <div id="usb-mirror-status" style="margin-bottom:12px;"></div>
         <div id="usb-mirror-log" class="log-area" style="display:none;margin-top:12px;"></div>
         <div id="usb-mirror-alert"></div>

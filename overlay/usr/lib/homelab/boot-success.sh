@@ -20,12 +20,14 @@ if [ -n "$boot_disk" ]; then
         | awk '$2=="PINNEOS_EFI"{print "/dev/"$1}' | head -1)
 fi
 
+usb_role="primary"
 if [ -n "$efi_dev" ]; then
     mnt=$(mktemp -d)
     if mount "$efi_dev" "$mnt" 2>/dev/null; then
         grub-editenv "$mnt/grubenv" set boot_tries=0
+        usb_role=$(cat "$mnt/pinneos-role" 2>/dev/null | tr -d '[:space:]' || echo "primary")
         umount "$mnt" 2>/dev/null || true
-        log "boot_tries reset to 0 on EFI partition ($efi_dev)"
+        log "boot_tries reset to 0 on EFI partition ($efi_dev), role=$usb_role"
     fi
     rmdir "$mnt" 2>/dev/null || true
 elif [ -f "$PERSIST_MOUNT/grubenv" ]; then
@@ -36,8 +38,23 @@ else
     log "Warning: could not find grubenv to reset boot_tries"
 fi
 
-# Trigger mirror sync — keeps both USB sticks identical.
-# --no-block: don't wait for sync to complete (can take minutes for large squashfs).
-# Exits silently if no mirror USB is connected.
+# Warn loudly if booting from backup USB
+if [ "$usb_role" = "backup" ]; then
+    log "WARNING: Booted from BACKUP USB — primary USB may be missing or failed"
+    # Send Gotify notification if configured
+    gotify_url=$(cat /etc/homelab/gotify-url 2>/dev/null | tr -d '[:space:]')
+    gotify_token=$(cat /etc/homelab/gotify-token 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$gotify_url" ] && [ -n "$gotify_token" ]; then
+        curl -sf -X POST "$gotify_url/message" \
+            -H "X-Gotify-Key: $gotify_token" \
+            -F "title=PinneOS: Backup USB booted" \
+            -F "message=System is running from the BACKUP USB stick. Check if the primary USB is connected and functional." \
+            -F "priority=7" >/dev/null 2>&1 || true
+    fi
+fi
+
+# Trigger mirror sync — only after confirmed boot.
+# Syncs primary → backup so backup stays current after a successful update.
+# --no-block: don't wait for sync to complete (large squashfs takes minutes).
 systemctl start --no-block pinneos-usb-mirror-sync.service 2>/dev/null || true
-log "USB mirror sync triggered"
+log "USB mirror sync triggered (role=$usb_role)"
