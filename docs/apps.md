@@ -1,5 +1,9 @@
 # Recommended apps for PinneOS
 
+> **Sync note:** `apps.md` and `apps.json` are companion files kept in sync manually.
+> `apps.json` is the machine-readable source used by the Cockpit Apps tab.
+> When adding or changing an app here, update `apps.json` and `overlay/usr/share/pinneos/apps.json` too.
+
 Ready-to-use Docker Compose stacks for the most popular homelab apps.
 All examples use `tank` as the pool name — replace with your actual pool name.
 

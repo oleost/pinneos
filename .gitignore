@@ -6,6 +6,7 @@ release/
 *.sha256
 *.json
 !overlay/**/*.json
+!docs/apps.json
 __pycache__/
 *.pyc
 .env

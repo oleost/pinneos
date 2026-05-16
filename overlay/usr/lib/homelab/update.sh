@@ -102,6 +102,14 @@ if [ "$1" = "--file" ]; then
     [ -f "$local_file" ] || die "File not found: $local_file"
 fi
 
+# Resolve target slot BEFORE any loop devices are created.
+# Once losetup -P is called, the IMG partitions get the same PINNEOS_* labels
+# as the real USB partitions, making findfs ambiguous. Resolving early avoids this.
+_target=$(other_slot)
+_target_dev=$(slot_dev "$_target")
+[ -n "$_target_dev" ] || die "Cannot find Slot $_target partition on boot USB"
+log "Target slot: $_target ($_target_dev)"
+
 # Need ~7 GB free: 1.2 GB download + 5.5 GB decompressed image.
 # Prefer a ZFS storage dataset (TBs of space); fall back to /tmp on RAM systems.
 _find_workbase() {
@@ -220,12 +228,12 @@ else
 fi
 
 # 4. Write kernel, initramfs, and squashfs to standby slot
-target=$(other_slot)
-target_dev=$(slot_dev "$target")
+target="$_target"
+target_dev="$_target_dev"
 log "Writing to slot $target ($target_dev)..."
 
 mkdir -p "$slot_mnt"
-mount "$target_dev" "$slot_mnt"
+mount -o rw "$target_dev" "$slot_mnt" || die "Cannot mount $target_dev read-write — check if USB is write-protected"
 
 if [ "$img_mode" = "1" ]; then
     # Slot A from the IMG already has files in the final slot layout

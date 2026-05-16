@@ -325,6 +325,9 @@ identically if the new slot fails.
 - **A/B update flow tested end-to-end on real hardware** — v0.2.0→v0.2.1 via Cockpit Update tab
 - **Dynamic login banner** — `/etc/profile.d/pinneos-banner.sh` shows PinneOS version, hostname, IP on login; `pinneos-issue.service` writes `/etc/issue` before getty
 - **USB mirror redesign** — replaced "primary/backup with 24h delay" model with always-in-sync mirrors: `usb-mirror-sync.sh` syncs both slots (A+B) and grubenv; triggered on boot-success and USB plug-in; no registration required; GRUB boots from either USB freely
+- **Built-in file sharing** — SMB and NFS run as host daemons (samba + nfs-utils packages); Cockpit Shares tab for add/remove/status; no Docker required
+- **Cockpit Apps tab** — catalog of 11 Docker Compose apps; Install + Install & Start buttons; installed detection via `/opt/stacks/<id>/`; pool placeholder `{{POOL}}` substituted at install; `docs/apps.json` machine-readable companion to `docs/apps.md`
+- **update.sh mount-order fix** — target slot partition resolved BEFORE loop device setup to prevent PINNEOS_* label ambiguity causing read-only mounts (v0.3.1)
 
 ### In progress / TODO
 - VM support (KVM + QEMU + cockpit-machines) — plan in `docs/vm-support-plan.md`, primary use-case is AMP game server manager

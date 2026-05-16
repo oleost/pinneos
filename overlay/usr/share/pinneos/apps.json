@@ -1,0 +1,112 @@
+[
+  {
+    "id": "jellyfin",
+    "name": "Jellyfin",
+    "description": "Media server — stream movies, TV and music to any device. Open source, no account required.",
+    "port": 8096,
+    "url_path": "",
+    "needs_config": false,
+    "compose": "services:\n  jellyfin:\n    image: lscr.io/linuxserver/jellyfin:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n    ports:\n      - \"8096:8096\"\n    volumes:\n      - /{{POOL}}/apps/jellyfin:/config\n      - /{{POOL}}/storage/media:/media\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "immich",
+    "name": "Immich",
+    "description": "Self-hosted Google Photos alternative — automatic phone backup, face recognition, albums, map view.",
+    "port": 2283,
+    "url_path": "",
+    "needs_config": false,
+    "setup": "mkdir -p /{{POOL}}/apps/immich/{model-cache,db} /{{POOL}}/storage/photos",
+    "compose": "services:\n  immich-server:\n    image: ghcr.io/immich-app/immich-server:release\n    environment:\n      - DB_HOSTNAME=immich-db\n      - DB_USERNAME=immich\n      - DB_PASSWORD=immich\n      - DB_DATABASE_NAME=immich\n      - REDIS_HOSTNAME=immich-redis\n    ports:\n      - \"2283:2283\"\n    volumes:\n      - /{{POOL}}/storage/photos:/usr/src/app/upload\n      - /etc/localtime:/etc/localtime:ro\n    depends_on:\n      - immich-redis\n      - immich-db\n    restart: unless-stopped\n\n  immich-machine-learning:\n    image: ghcr.io/immich-app/immich-machine-learning:release\n    volumes:\n      - /{{POOL}}/apps/immich/model-cache:/cache\n    restart: unless-stopped\n\n  immich-redis:\n    image: redis:alpine\n    restart: unless-stopped\n\n  immich-db:\n    image: tensorchord/pgvecto-rs:pg14-v0.2.0\n    environment:\n      - POSTGRES_USER=immich\n      - POSTGRES_PASSWORD=immich\n      - POSTGRES_DB=immich\n    volumes:\n      - /{{POOL}}/apps/immich/db:/var/lib/postgresql/data\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "vaultwarden",
+    "name": "Vaultwarden",
+    "description": "Self-hosted Bitwarden-compatible password manager. Works with the official Bitwarden browser extension and mobile apps.",
+    "port": 8888,
+    "url_path": "",
+    "needs_config": false,
+    "setup": "mkdir -p /{{POOL}}/apps/vaultwarden && chown 1000:1000 /{{POOL}}/apps/vaultwarden",
+    "compose": "services:\n  vaultwarden:\n    image: vaultwarden/server:latest\n    user: \"1000:1000\"\n    environment:\n      - TZ=Europe/Oslo\n    ports:\n      - \"8888:80\"\n    volumes:\n      - /{{POOL}}/apps/vaultwarden:/data\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "nextcloud",
+    "name": "Nextcloud",
+    "description": "File sync, calendar, contacts — a self-hosted Dropbox/Google Drive. Requires Nextcloud desktop or mobile client.",
+    "port": 443,
+    "url_path": "",
+    "needs_config": true,
+    "config_note": "Change both 'changeme' database passwords before starting.",
+    "setup": "mkdir -p /{{POOL}}/apps/{nextcloud,nextcloud-db}",
+    "compose": "services:\n  nextcloud:\n    image: lscr.io/linuxserver/nextcloud:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n    ports:\n      - \"443:443\"\n    volumes:\n      - /{{POOL}}/apps/nextcloud:/config\n      - /{{POOL}}/storage/shared:/data\n    depends_on:\n      - nextcloud-db\n    restart: unless-stopped\n\n  nextcloud-db:\n    image: lscr.io/linuxserver/mariadb:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n      - MYSQL_ROOT_PASSWORD=changeme\n      - MYSQL_DATABASE=nextcloud\n      - MYSQL_USER=nextcloud\n      - MYSQL_PASSWORD=changeme\n    volumes:\n      - /{{POOL}}/apps/nextcloud-db:/config\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "filebrowser",
+    "name": "Filebrowser",
+    "description": "Web file manager — browse, upload, download, and manage files in your browser.",
+    "port": 8080,
+    "url_path": "",
+    "needs_config": false,
+    "setup": "mkdir -p /{{POOL}}/apps/filebrowser && chown 1000:1000 /{{POOL}}/apps/filebrowser",
+    "compose": "services:\n  filebrowser:\n    image: filebrowser/filebrowser:latest\n    user: \"1000:1000\"\n    ports:\n      - \"8080:80\"\n    volumes:\n      - /{{POOL}}:/srv\n      - /{{POOL}}/apps/filebrowser:/config\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "nginx-proxy-manager",
+    "name": "Nginx Proxy Manager",
+    "description": "Reverse proxy with automatic Let's Encrypt SSL — route subdomains to services and enable HTTPS.",
+    "port": 81,
+    "url_path": "",
+    "needs_config": true,
+    "config_note": "Default login: admin@example.com / changeme — change immediately. Note: port 80 conflicts with Homepage.",
+    "setup": "mkdir -p /{{POOL}}/apps/nginx-proxy-manager/{data,letsencrypt}",
+    "compose": "services:\n  nginx-proxy-manager:\n    image: jc21/nginx-proxy-manager:latest\n    ports:\n      - \"80:80\"\n      - \"81:81\"\n      - \"443:443\"\n    volumes:\n      - /{{POOL}}/apps/nginx-proxy-manager/data:/data\n      - /{{POOL}}/apps/nginx-proxy-manager/letsencrypt:/etc/letsencrypt\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "qbittorrent",
+    "name": "qBittorrent",
+    "description": "Torrent client with web UI. Pairs with Sonarr/Radarr for automated media downloads.",
+    "port": 8090,
+    "url_path": "",
+    "needs_config": false,
+    "compose": "services:\n  qbittorrent:\n    image: lscr.io/linuxserver/qbittorrent:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n      - WEBUI_PORT=8090\n    ports:\n      - \"8090:8090\"\n      - \"6881:6881\"\n      - \"6881:6881/udp\"\n    volumes:\n      - /{{POOL}}/apps/qbittorrent:/config\n      - /{{POOL}}/storage/downloads:/downloads\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "sonarr-radarr",
+    "name": "Sonarr + Radarr",
+    "description": "Automated media management — Sonarr for TV shows, Radarr for movies. Both integrate with qBittorrent and Jellyfin.",
+    "port": 8989,
+    "url_path": "",
+    "needs_config": false,
+    "compose": "services:\n  sonarr:\n    image: lscr.io/linuxserver/sonarr:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n    ports:\n      - \"8989:8989\"\n    volumes:\n      - /{{POOL}}/apps/sonarr:/config\n      - /{{POOL}}/storage/media/tv:/tv\n      - /{{POOL}}/storage/downloads:/downloads\n    restart: unless-stopped\n\n  radarr:\n    image: lscr.io/linuxserver/radarr:latest\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Europe/Oslo\n    ports:\n      - \"7878:7878\"\n    volumes:\n      - /{{POOL}}/apps/radarr:/config\n      - /{{POOL}}/storage/media/movies:/movies\n      - /{{POOL}}/storage/downloads:/downloads\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "uptime-kuma",
+    "name": "Uptime Kuma",
+    "description": "Service monitoring dashboard — shows whether your services are up, sends notifications when something goes down.",
+    "port": 3001,
+    "url_path": "",
+    "needs_config": false,
+    "setup": "mkdir -p /{{POOL}}/apps/uptime-kuma && chown 1000:1000 /{{POOL}}/apps/uptime-kuma",
+    "compose": "services:\n  uptime-kuma:\n    image: louislam/uptime-kuma:latest\n    user: \"1000:1000\"\n    ports:\n      - \"3001:3001\"\n    volumes:\n      - /{{POOL}}/apps/uptime-kuma:/app/data\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "gotify",
+    "name": "Gotify",
+    "description": "Self-hosted push notification server. PinneOS sends disk and ZFS alerts here. Use the Android/iOS app to receive them.",
+    "port": 8008,
+    "url_path": "",
+    "needs_config": false,
+    "setup": "mkdir -p /{{POOL}}/apps/gotify && chown 1000:1000 /{{POOL}}/apps/gotify",
+    "compose": "services:\n  gotify:\n    image: gotify/server:latest\n    user: \"1000:1000\"\n    ports:\n      - \"8008:80\"\n    volumes:\n      - /{{POOL}}/apps/gotify:/app/data\n    restart: unless-stopped\n"
+  },
+  {
+    "id": "scrutiny",
+    "name": "Scrutiny",
+    "description": "SMART disk health dashboard — visual monitoring with historical trends, temperature history, and deterioration alerts.",
+    "port": 8081,
+    "url_path": "",
+    "needs_config": true,
+    "config_note": "Add a 'devices:' entry for each disk you want to monitor (e.g. /dev/sdb:/dev/sdb).",
+    "setup": "mkdir -p /{{POOL}}/apps/scrutiny/{config,influxdb}",
+    "compose": "services:\n  scrutiny:\n    image: ghcr.io/analogj/scrutiny:master-omnibus\n    cap_add:\n      - SYS_RAWIO\n    ports:\n      - \"8081:8080\"\n    volumes:\n      - /run/udev:/run/udev:ro\n      - /{{POOL}}/apps/scrutiny/config:/opt/scrutiny/config\n      - /{{POOL}}/apps/scrutiny/influxdb:/opt/scrutiny/influxdb\n    devices:\n      - /dev/sda:/dev/sda\n    restart: unless-stopped\n"
+  }
+]

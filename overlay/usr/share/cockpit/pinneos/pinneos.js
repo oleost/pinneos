@@ -33,13 +33,14 @@ function clearAlert(id) {
 var currentTab = 'setup';
 
 function switchTab(name) {
-  ['setup', 'zfs', 'backup', 'shares', 'access', 'update'].forEach(function(t) {
+  ['setup', 'zfs', 'backup', 'shares', 'apps', 'access', 'update'].forEach(function(t) {
     document.getElementById('pane-' + t).style.display = t === name ? '' : 'none';
     document.getElementById('tab-btn-' + t).classList.toggle('active', t === name);
   });
   currentTab = name;
   if (name === 'zfs')    loadZfs();
   if (name === 'shares') loadShares();
+  if (name === 'apps')   loadApps();
   if (name === 'access') updateAccessInfo();
   if (name === 'update') loadUpdateTab();
 }
@@ -1891,6 +1892,127 @@ document.getElementById('btn-smb-refresh').addEventListener('click', function() 
 document.getElementById('btn-nfs-refresh').addEventListener('click', function() {
   loadNfsExports(); loadNfsStatus();
 });
+
+// ── Apps tab ─────────────────────────────────────────────────────────────────
+
+var _appsPoolList = [];
+
+function loadApps() {
+  var listEl = document.getElementById('apps-list');
+  listEl.textContent = 'Loading…';
+
+  // Load pool list for the pool selector
+  cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {err: 'message'})
+    .then(function(out) {
+      _appsPoolList = out.trim().split('\n').filter(Boolean);
+      var sel = document.getElementById('apps-pool-select');
+      sel.innerHTML = '';
+      _appsPoolList.forEach(function(p) {
+        var o = document.createElement('option');
+        o.value = o.textContent = p;
+        sel.appendChild(o);
+      });
+      document.getElementById('apps-pool-row').style.display =
+        _appsPoolList.length > 1 ? '' : 'none';
+    })
+    .catch(function() { _appsPoolList = []; });
+
+  cockpit.spawn(['/usr/lib/homelab/apps.sh', 'list'], {superuser: 'try', err: 'message'})
+    .then(function(out) {
+      var apps;
+      try { apps = JSON.parse(out); } catch(e) {
+        listEl.textContent = 'Failed to parse app catalog.'; return;
+      }
+      renderAppsList(apps);
+    })
+    .catch(function(err) {
+      listEl.textContent = 'Error loading catalog: ' + String(err.message || err);
+    });
+}
+
+function _appsPool() {
+  var sel = document.getElementById('apps-pool-select');
+  return sel.value || (_appsPoolList.length ? _appsPoolList[0] : '');
+}
+
+function renderAppsList(apps) {
+  var listEl = document.getElementById('apps-list');
+  if (!apps.length) { listEl.textContent = 'No apps found.'; return; }
+
+  var html = '<table class="table" style="width:100%"><thead><tr>' +
+    '<th>App</th><th>Description</th><th>Port</th><th>Status</th><th></th>' +
+    '</tr></thead><tbody>';
+
+  apps.forEach(function(app) {
+    var statusBadge = app.installed
+      ? '<span class="badge badge-ok">Installed</span>'
+      : '<span class="badge" style="background:#f0f0f0;color:#555">Not installed</span>';
+
+    var configNote = (app.needs_config && !app.installed)
+      ? '<p class="hint" style="margin:4px 0 0;color:#c9190b">' + esc(app.config_note || 'Requires configuration before starting.') + '</p>'
+      : '';
+
+    var installBtn = '';
+    if (!app.installed) {
+      installBtn = '<button class="btn btn-secondary" data-action="install" data-id="' + esc(app.id) + '" style="margin-right:6px">Install</button>';
+      if (!app.needs_config) {
+        installBtn += '<button class="btn btn-primary" data-action="install-start" data-id="' + esc(app.id) + '">Install &amp; Start</button>';
+      }
+    }
+
+    html += '<tr>' +
+      '<td style="white-space:nowrap;font-weight:600">' + esc(app.name) + '</td>' +
+      '<td>' + esc(app.description) + configNote + '</td>' +
+      '<td style="white-space:nowrap">' + (app.port ? ':' + app.port : '—') + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td style="white-space:nowrap">' + installBtn + '</td>' +
+      '</tr>';
+  });
+
+  html += '</tbody></table>';
+  listEl.innerHTML = html;
+}
+
+function _doInstall(appId, andStart) {
+  var pool = _appsPool();
+  if (!pool) {
+    alert('No ZFS pool available. Create a pool first.');
+    return;
+  }
+
+  var btns = document.querySelectorAll('#apps-list [data-id="' + appId + '"]');
+  btns.forEach(function(b) { b.disabled = true; b.textContent = 'Installing…'; });
+
+  cockpit.spawn(['/usr/lib/homelab/apps.sh', 'setup', appId, pool],
+    {superuser: 'require', err: 'message'})
+    .then(function() {
+      return cockpit.spawn(['/usr/lib/homelab/apps.sh', 'install', appId, pool],
+        {superuser: 'require', err: 'message'});
+    })
+    .then(function() {
+      if (!andStart) { loadApps(); return; }
+      return cockpit.spawn(
+        ['/usr/bin/docker', 'compose', '-f', '/opt/stacks/' + appId + '/docker-compose.yml',
+         'up', '-d', '--pull', 'always'],
+        {superuser: 'require', err: 'message'}
+      );
+    })
+    .then(function() { loadApps(); })
+    .catch(function(err) {
+      btns.forEach(function(b) { b.disabled = false; b.textContent = 'Install'; });
+      alert('Install failed: ' + String(err.message || err));
+    });
+}
+
+document.getElementById('apps-list').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  var appId = btn.dataset.id;
+  var andStart = btn.dataset.action === 'install-start';
+  _doInstall(appId, andStart);
+});
+
+document.getElementById('btn-apps-refresh').addEventListener('click', loadApps);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
