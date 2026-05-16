@@ -162,8 +162,6 @@ cmd_run() {
             # Warn if destination dataset already exists
             if zfs list "$dst_ds" >/dev/null 2>&1; then
                 warn "$dst_ds already exists and will be overwritten."
-                read -rp "  Continue? [y/N] " ans
-                [ "$ans" = "y" ] || { log "Skipped $dataset."; continue; }
             fi
 
             zfs send -Rp "${src_ds}@${snap}" | zfs receive -F "$dst_ds"
