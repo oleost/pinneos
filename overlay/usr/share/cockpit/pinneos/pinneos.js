@@ -1418,7 +1418,7 @@ function fetchZfsPools() {
   if (_poolCache) {
     return cockpit.spawn(['/bin/true'], {err: 'ignore'}).then(function() { return _poolCache; });
   }
-  return cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {err: 'message'})
+  return cockpit.spawn(['/usr/bin/zpool', 'list', '-H', '-o', 'name'], {superuser: 'try', err: 'message'})
     .then(function(out) {
       var pools = out.trim().split('\n').filter(Boolean);
       var managed = [], other = [];
