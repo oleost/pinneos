@@ -246,6 +246,7 @@ cmd_save_keyfile() {
     chmod 600 "$key_path"
 
     # Raw key for auto-boot unlock
+    mkdir -p "$PERSIST_DIR"
     cp "$key_path" "$PERSIST_DIR/${poolname}.key"
     chmod 600 "$PERSIST_DIR/${poolname}.key"
     zfs set "keylocation=file://${PERSIST_DIR}/${poolname}.key" "$poolname" 2>/dev/null || true
